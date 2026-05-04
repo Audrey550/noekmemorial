@@ -1,0 +1,112 @@
+Memorial Space Project Roadmap
+Stack: Vue 3 + Three.js + Supabase
+
+GOAL
+Build a 3D memorial configurator where users can create, save, and visit a memorial space.
+
+SCOPE FOR MVP
+- One editable memorial template
+- Basic 3D room and camera controls
+- Asset library with a few 3D models
+- Object placement, selection, and simple interaction
+- Save and load the scene as JSON
+- Public viewer page for guests
+- Guest messages / contributions
+- Simple brand settings for white-label use
+
+WEEK 1: BASIC 3D EDITOR
+Goal: get the first working demo ready.
+
+Tasks:
+- Set up Vue 3 project with Vite
+- Set up Three.js scene
+- Add camera controls with OrbitControls
+- Add lighting and a floor/environment
+- Load 2 to 3 GLB models
+- Create a simple asset panel
+- Add button to place objects in the scene
+
+Deliverable:
+- A basic 3D room where you can move around and add objects
+
+WEEK 2: EDITOR INTERACTION
+Goal: make the scene feel like an actual editor.
+
+Tasks:
+- Add object selection with raycasting
+- Add move / rotate / delete controls
+- Show selected object details in a side panel
+- Add popup or inspector for object notes/messages
+- Keep scene state in a JSON structure
+
+Deliverable:
+- A usable editor with basic interaction and editable objects
+
+WEEK 3: SAVE AND LOAD
+Goal: make spaces persistent.
+
+Tasks:
+- Set up Supabase project
+- Create tables for brands, spaces, and contributions
+- Store scene data in JSONB
+- Save scene to Supabase
+- Load scene from Supabase by slug or id
+- Create a public viewer route
+
+Deliverable:
+- A memorial space that can be saved, reopened, and shared
+
+WEEK 4: GUESTS AND POLISH
+Goal: make it presentable for feedback and final demo.
+
+Tasks:
+- Add guest name input
+- Add guest messages / contributions
+- Show contributions in the viewer
+- Add brand colors and logo support
+- Clean up UI and layout
+- Prepare presentation flow and fallback screenshots
+
+Deliverable:
+- A polished demo that looks like a real product
+
+PRIORITY ORDER
+1. 3D room and camera
+2. Place objects
+3. Click and inspect objects
+4. Save / load scene
+5. Public viewer page
+6. Guest contributions
+7. White-label styling
+
+FEATURES TO CUT IF TIME IS TIGHT
+- Real-time multiplayer editing
+- Full CMS
+- Visitor accounts
+- Advanced moderation
+- Complex templates
+- Custom physics
+
+DAILY FOCUS FOR THE FIRST DEMO
+- Build the scene first
+- Load one model
+- Add one object placement action
+- Keep the UI simple
+- Make it work before making it pretty
+
+DATA MODEL IDEA
+- brands
+- spaces
+- contributions
+- assets
+
+SCENE JSON IDEA
+- environment settings
+- array of objects
+- each object has id, assetId, position, rotation, scale, notes
+
+NEXT BEST STEP
+- Build the Three.js scene component
+- Load one GLB model
+- Add object placement
+- Save the scene state locally before connecting Supabase
