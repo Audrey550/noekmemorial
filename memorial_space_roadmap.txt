@@ -18,10 +18,10 @@ WEEK 1: BASIC 3D EDITOR
 Goal: get the first working demo ready.
 
 Tasks:
-- Set up Vue 3 project with Vite
-- Set up Three.js scene
-- Add camera controls with OrbitControls
-- Add lighting and a floor/environment
+- ~~Set up Vue 3 project with Vite~~
+- ~~Set up Three.js scene~~
+- ~~Add camera controls with OrbitControls~~
+- ~~Add lighting and a floor/environment~~
 - Load 2 to 3 GLB models
 - Create a simple asset panel
 - Add button to place objects in the scene

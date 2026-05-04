@@ -5,6 +5,7 @@ This is the running log for the work we do in this project. I will keep it updat
 ## Current Focus
 
 - Project: Memorial Space
+- Current milestone: Week 1 basic 3D editor
 - Stack: Vue 3 + Three.js + Supabase
 - Source roadmap: [memorial_space_roadmap.txt](memorial_space_roadmap.txt)
 
@@ -18,6 +19,7 @@ This is the running log for the work we do in this project. I will keep it updat
 | --- | --- | --- | --- |
 | 2026-05-04 | Create a tracker file for project requests and keep it updated over time. | Done | Created this file at the project root. |
 | 2026-05-04 | Compile the two .gitignore files into one and update the tracker accordingly. | Done | Merged memorial-space/.gitignore into the root .gitignore and removed the duplicate file. |
+| 2026-05-04 | Start week 1 project tasks and complete the first two tasks for today. | Done | Replaced the starter screen with a Three.js room scene, OrbitControls, lighting, and a responsive editor layout. |
 
 ## Decisions
 

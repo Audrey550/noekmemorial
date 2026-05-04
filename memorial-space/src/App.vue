@@ -1,7 +1,7 @@
 <script setup>
-import HelloWorld from './components/HelloWorld.vue'
+import SceneCanvas from './components/SceneCanvas.vue'
 </script>
 
 <template>
-  <HelloWorld />
+  <SceneCanvas />
 </template>
