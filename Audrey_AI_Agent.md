@@ -15,6 +15,7 @@ This is the running log for the work we do in this project. I will keep it updat
 - Start each session by reviewing what was done yesterday and what needs to be done today.
 - Explicitly confirm each time this tracker file is updated.
 - Align the placeholder room toward the provided Figma reference look.
+- Move the next phase away from CSS and into functional features like loading objects into the room.
 
 ## Request Log
 
@@ -36,6 +37,7 @@ This is the running log for the work we do in this project. I will keep it updat
 | 2026-05-05 | Soften the purple in the page background gradient. | Done | Reduced the saturation and contrast of the left side so the grid stays more readable. |
 | 2026-05-05 | Tune the pink in the page background gradient. | Done | Reduced the intensity of the middle gradient stop so the backdrop feels softer. |
 | 2026-05-05 | Restore the previous softer background gradient. | Done | Reverted the latest pink tuning and returned to the earlier softer three-stop backdrop. |
+| 2026-05-05 | Pause CSS work and shift focus to functional room features. | Done | CSS is at a good stopping point; next work should focus on loading objects into the room and related interactions. |
 
 ## Session Snapshot (2026-05-05)
 
