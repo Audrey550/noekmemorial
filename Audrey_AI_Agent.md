@@ -38,6 +38,15 @@ This is the running log for the work we do in this project. I will keep it updat
 | 2026-05-05 | Tune the pink in the page background gradient. | Done | Reduced the intensity of the middle gradient stop so the backdrop feels softer. |
 | 2026-05-05 | Restore the previous softer background gradient. | Done | Reverted the latest pink tuning and returned to the earlier softer three-stop backdrop. |
 | 2026-05-05 | Pause CSS work and shift focus to functional room features. | Done | CSS is at a good stopping point; next work should focus on loading objects into the room and related interactions. |
+| 2026-05-05 | Build a clean top navigation bar matching the Noek website layout. | Done | Created TopNavigation.vue component with logo, nav menu items, and CTA button. Integrated into App.vue. Includes hover states, responsive design, and active link highlighting. |
+| 2026-05-05 | Change "Naam" and "Edit" button text to Labels font with off-black color. | Done | Updated `.profile-area` and `.icon-button` styles in SceneCanvas to use Outfit font and #1a1a1a off-black color. |
+| 2026-05-05 | Add radius and drop shadow to the top navbar. | Done | Applied border-radius: 30px and box-shadow: 0 5px 10px 0 rgba(0, 0, 0, 0.2) to the .top-bar element. |
+| 2026-05-05 | Inset the navbar with gaps from edges and top of page. | Done | Added margin: 20px and width: calc(100% - 40px) to .top-bar so it doesn't span full width and has space from top. |
+| 2026-05-05 | Align navbar left edge with MSG button and match margins on both sides. | Done | Updated .top-bar margin to 20px 130px (top, left/right) for symmetric spacing aligned with action dock. |
+| 2026-05-05 | Increase top gap to 30px on navbar. | Done | Changed .top-bar margin from 20px 130px to 30px 130px for a more spacious top gap. |
+| 2026-05-05 | Reduce navbar height by adjusting padding. | Done | Changed .top-bar padding from 18px 38px to 12px 38px for a thinner navbar. |
+| 2026-05-05 | Align navbar to MSG end and make it taller. | Done | Updated .top-bar margin to 30px 228px so edges align with MSG end, and increased padding to 16px 38px for more height. |
+| 2026-05-05 | Clarify navbar account controls semantics. | Done | Wired username display to a reactive `username` state and kept Edit as a standalone button ready for future icon replacement. |
 
 ## Session Snapshot (2026-05-05)
 

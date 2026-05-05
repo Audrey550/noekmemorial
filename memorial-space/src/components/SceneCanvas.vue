@@ -4,6 +4,7 @@ import * as THREE from 'three'
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js'
 
 const canvasRef = ref(null)
+const username = ref('Naam')
 
 let animationFrameId = 0
 let resizeObserver = null
@@ -284,8 +285,8 @@ onBeforeUnmount(() => {
       </div>
 
       <div class="profile-area">
-        <span>Naam</span>
-        <button type="button" class="icon-button" aria-label="Edit profile">Edit</button>
+        <span class="profile-name">{{ username }}</span>
+        <button type="button" class="icon-button" aria-label="Edit profile" title="Edit profile">Edit</button>
         <button type="button" class="avatar" aria-label="Open profile"></button>
       </div>
     </header>
@@ -328,8 +329,11 @@ onBeforeUnmount(() => {
   color: #101010;
   background: rgba(255, 255, 255, 0.62);
   border-bottom: 1px solid #d8d8d8;
+  border-radius: 30px;
   backdrop-filter: blur(12px);
-  padding: 18px 38px;
+  box-shadow: 0 5px 10px 0 rgba(0, 0, 0, 0.2);
+  padding: 16px 38px;
+  margin: 30px 228px;
 }
 
 .brand-lockup {
@@ -369,14 +373,16 @@ onBeforeUnmount(() => {
   display: flex;
   align-items: center;
   gap: 10px;
-  font-family: 'Trebuchet MS', 'Segoe UI', sans-serif;
+  font-family: 'Outfit', 'Segoe UI', sans-serif;
   font-size: 28px;
+  color: #1a1a1a;
 }
 
 .icon-button {
   border: none;
   background: transparent;
-  color: #101010;
+  color: #1a1a1a;
+  font-family: 'Outfit', 'Segoe UI', sans-serif;
   font-size: 18px;
   font-weight: 600;
   padding: 4px 8px;
