@@ -18,11 +18,10 @@ onMounted(() => {
   }
 
   const scene = new THREE.Scene()
-  scene.background = new THREE.Color('#f2ece4')
-  scene.fog = new THREE.Fog('#f2ece4', 12, 28)
+  scene.fog = new THREE.Fog('#ececec', 22, 64)
 
-  const camera = new THREE.PerspectiveCamera(45, 16 / 9, 0.1, 100)
-  camera.position.set(6.6, 4.4, 8.8)
+  const camera = new THREE.PerspectiveCamera(34, 16 / 9, 0.1, 120)
+  camera.position.set(17, 13, 17)
 
   renderer = new THREE.WebGLRenderer({
     canvas,
@@ -35,21 +34,32 @@ onMounted(() => {
 
   controls = new OrbitControls(camera, renderer.domElement)
   controls.enableDamping = true
-  controls.dampingFactor = 0.08
-  controls.enablePan = true
-  controls.minDistance = 5.5
-  controls.maxDistance = 16
-  controls.maxPolarAngle = Math.PI / 2.05
-  controls.target.set(0, 1.1, 0)
+  controls.dampingFactor = 0.06
+  controls.enablePan = false
+  controls.minDistance = 12
+  controls.maxDistance = 30
+  controls.minPolarAngle = 0.72
+  controls.maxPolarAngle = 1.02
+  controls.minAzimuthAngle = -Math.PI / 1.35
+  controls.maxAzimuthAngle = -Math.PI / 3.2
+  controls.target.set(0, 2.1, 0)
   controls.update()
 
+  const worldGrid = new THREE.GridHelper(84, 42, '#bdbdbd', '#cfcfcf')
+  worldGrid.position.y = -0.04
+  worldGrid.rotation.y = Math.PI / 4
+  worldGrid.material.transparent = true
+  worldGrid.material.opacity = 1
+  scene.add(worldGrid)
+
   const room = new THREE.Group()
+  room.position.y = 0.62
 
   const floor = new THREE.Mesh(
-    new THREE.PlaneGeometry(14, 14),
+    new THREE.PlaneGeometry(9, 9),
     new THREE.MeshStandardMaterial({
-      color: '#ddd0c3',
-      roughness: 0.95,
+      color: '#838991',
+      roughness: 0.84,
       metalness: 0,
     }),
   )
@@ -58,160 +68,164 @@ onMounted(() => {
   room.add(floor)
 
   const wallMaterial = new THREE.MeshStandardMaterial({
-    color: '#f7f2eb',
-    roughness: 1,
-    metalness: 0,
+    color: '#f2afc7',
+    roughness: 0.88,
+    metalness: 0.02,
   })
 
-  const backWall = new THREE.Mesh(new THREE.PlaneGeometry(14, 6.5), wallMaterial)
-  backWall.position.set(0, 3.25, -7)
+  const leftWall = new THREE.Mesh(new THREE.PlaneGeometry(9, 4.8), wallMaterial)
+  leftWall.rotation.y = Math.PI / 2
+  leftWall.position.set(-4.5, 2.4, 0)
+  leftWall.receiveShadow = true
+  room.add(leftWall)
+
+  const backWall = new THREE.Mesh(new THREE.PlaneGeometry(9, 4.8), wallMaterial)
+  backWall.position.set(0, 2.4, -4.5)
   backWall.receiveShadow = true
   room.add(backWall)
 
-  const leftWall = new THREE.Mesh(new THREE.PlaneGeometry(14, 6.5), wallMaterial)
-  leftWall.rotation.y = Math.PI / 2
-  leftWall.position.set(-7, 3.25, 0)
-  room.add(leftWall)
-
-  const rightWall = new THREE.Mesh(new THREE.PlaneGeometry(14, 6.5), wallMaterial)
-  rightWall.rotation.y = -Math.PI / 2
-  rightWall.position.set(7, 3.25, 0)
-  room.add(rightWall)
-
-  const ceiling = new THREE.Mesh(new THREE.PlaneGeometry(14, 14), wallMaterial)
-  ceiling.rotation.x = Math.PI / 2
-  ceiling.position.y = 6.5
-  room.add(ceiling)
-
-  const wallTrimMaterial = new THREE.MeshStandardMaterial({
-    color: '#d9c8bb',
-    roughness: 0.9,
+  const trimMaterial = new THREE.MeshStandardMaterial({
+    color: '#f6e9f0',
+    roughness: 0.7,
   })
 
-  const baseTrim = new THREE.Mesh(new THREE.BoxGeometry(13.6, 0.08, 0.14), wallTrimMaterial)
-  baseTrim.position.set(0, 0.04, -6.94)
-  room.add(baseTrim)
-
-  const leftTrim = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.08, 13.6), wallTrimMaterial)
-  leftTrim.position.set(-6.94, 0.04, 0)
+  const leftTrim = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.2, 8.7), trimMaterial)
+  leftTrim.position.set(-4.4, 0.1, 0)
   room.add(leftTrim)
 
-  const rightTrim = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.08, 13.6), wallTrimMaterial)
-  rightTrim.position.set(6.94, 0.04, 0)
-  room.add(rightTrim)
+  const backTrim = new THREE.Mesh(new THREE.BoxGeometry(8.7, 0.2, 0.2), trimMaterial)
+  backTrim.position.set(0, 0.1, -4.4)
+  room.add(backTrim)
 
-  const backPanel = new THREE.Mesh(
-    new THREE.PlaneGeometry(4.6, 2.6),
+  const rug = new THREE.Mesh(
+    new THREE.PlaneGeometry(3.15, 2),
     new THREE.MeshStandardMaterial({
-      color: '#efe7dc',
-      roughness: 0.9,
-      metalness: 0,
+      color: '#ef4b9a',
+      roughness: 0.95,
     }),
   )
-  backPanel.position.set(0, 2.2, -6.88)
-  room.add(backPanel)
+  rug.rotation.x = -Math.PI / 2
+  rug.position.set(0.2, 0.03, 0.9)
+  room.add(rug)
 
-  const focusGlow = new THREE.Mesh(
-    new THREE.SphereGeometry(0.22, 32, 32),
-    new THREE.MeshStandardMaterial({
-      color: '#f7c96d',
-      emissive: '#ffbb55',
-      emissiveIntensity: 1.4,
-      roughness: 0.2,
-      metalness: 0,
-    }),
-  )
-  focusGlow.position.set(0, 1.55, 0)
-  focusGlow.castShadow = true
-  room.add(focusGlow)
-
-  const pedestal = new THREE.Mesh(
-    new THREE.BoxGeometry(1.1, 1.1, 1.1),
-    new THREE.MeshStandardMaterial({
-      color: '#c7b8ab',
-      roughness: 0.85,
-      metalness: 0,
-    }),
-  )
-  pedestal.position.set(0, 0.55, 0)
-  pedestal.castShadow = true
-  pedestal.receiveShadow = true
-  room.add(pedestal)
-
-  const sideBlockMaterial = new THREE.MeshStandardMaterial({
-    color: '#b8a69a',
-    roughness: 0.9,
+  const sofaMaterial = new THREE.MeshStandardMaterial({
+    color: '#63ced0',
+    roughness: 0.75,
   })
 
-  const leftBlock = new THREE.Mesh(new THREE.BoxGeometry(0.8, 0.5, 0.8), sideBlockMaterial)
-  leftBlock.position.set(-2.4, 0.25, -0.8)
-  leftBlock.castShadow = true
-  leftBlock.receiveShadow = true
-  room.add(leftBlock)
+  const leftSofa = new THREE.Mesh(new THREE.BoxGeometry(2.5, 1, 1.1), sofaMaterial)
+  leftSofa.position.set(-2.75, 0.5, 0.6)
+  leftSofa.castShadow = true
+  leftSofa.receiveShadow = true
+  room.add(leftSofa)
 
-  const rightBlock = new THREE.Mesh(new THREE.BoxGeometry(0.8, 0.5, 0.8), sideBlockMaterial)
-  rightBlock.position.set(2.2, 0.25, 1)
-  rightBlock.castShadow = true
-  rightBlock.receiveShadow = true
-  room.add(rightBlock)
+  const rightSofa = new THREE.Mesh(new THREE.BoxGeometry(1.65, 1, 1.1), sofaMaterial)
+  rightSofa.position.set(2.6, 0.5, 0.5)
+  rightSofa.castShadow = true
+  rightSofa.receiveShadow = true
+  room.add(rightSofa)
 
-  const framedStone = new THREE.Mesh(
-    new THREE.BoxGeometry(2.2, 1.2, 0.2),
+  const desk = new THREE.Mesh(
+    new THREE.BoxGeometry(2.55, 0.16, 1.15),
     new THREE.MeshStandardMaterial({
-      color: '#c5b6aa',
-      roughness: 0.9,
+      color: '#f7d4b9',
+      roughness: 0.8,
     }),
   )
-  framedStone.position.set(0, 1.55, -5.8)
-  framedStone.castShadow = true
-  room.add(framedStone)
+  desk.position.set(1.35, 1.12, -2.85)
+  desk.castShadow = true
+  desk.receiveShadow = true
+  room.add(desk)
+
+  const shelf = new THREE.Mesh(
+    new THREE.BoxGeometry(0.8, 3.2, 1),
+    new THREE.MeshStandardMaterial({
+      color: '#f6e8dc',
+      roughness: 0.92,
+    }),
+  )
+  shelf.position.set(0.15, 1.6, -3.65)
+  shelf.castShadow = true
+  shelf.receiveShadow = true
+  room.add(shelf)
+
+  const chair = new THREE.Mesh(
+    new THREE.CylinderGeometry(0.5, 0.64, 0.9, 28),
+    new THREE.MeshStandardMaterial({
+      color: '#ec79ae',
+      roughness: 0.78,
+    }),
+  )
+  chair.position.set(1.78, 0.45, -1.92)
+  chair.castShadow = true
+  chair.receiveShadow = true
+  room.add(chair)
+
+  const monitor = new THREE.Mesh(
+    new THREE.BoxGeometry(0.9, 0.58, 0.07),
+    new THREE.MeshStandardMaterial({
+      color: '#2ec0c5',
+      emissive: '#15485f',
+      emissiveIntensity: 0.23,
+      roughness: 0.45,
+    }),
+  )
+  monitor.position.set(1.55, 1.55, -2.85)
+  monitor.castShadow = true
+  room.add(monitor)
+
+  const plant = new THREE.Mesh(
+    new THREE.ConeGeometry(0.36, 0.88, 10),
+    new THREE.MeshStandardMaterial({
+      color: '#31bc77',
+      roughness: 0.8,
+    }),
+  )
+  plant.position.set(0.62, 1.64, -2.45)
+  plant.castShadow = true
+  room.add(plant)
+
+  const roomShadow = new THREE.Mesh(
+    new THREE.PlaneGeometry(9.4, 9.4),
+    new THREE.ShadowMaterial({ opacity: 0.22 }),
+  )
+  roomShadow.rotation.x = -Math.PI / 2
+  roomShadow.position.y = -0.01
+  room.add(roomShadow)
 
   scene.add(room)
 
-  const ambientLight = new THREE.AmbientLight('#fff8f0', 1.8)
+  const ambientLight = new THREE.AmbientLight('#ffffff', 1.35)
   scene.add(ambientLight)
 
-  const hemisphereLight = new THREE.HemisphereLight('#fff8f0', '#ceb8a0', 2.2)
-  hemisphereLight.position.set(0, 8, 0)
+  const hemisphereLight = new THREE.HemisphereLight('#fff4fa', '#aeb4bf', 1.55)
+  hemisphereLight.position.set(0, 14, 0)
   scene.add(hemisphereLight)
 
-  const keyLight = new THREE.DirectionalLight('#fff7e9', 2.7)
-  keyLight.position.set(6, 9, 6)
+  const keyLight = new THREE.DirectionalLight('#fff5fb', 1.6)
+  keyLight.position.set(8, 14, 9)
   keyLight.castShadow = true
-  keyLight.shadow.mapSize.set(1024, 1024)
-  keyLight.shadow.camera.near = 1
-  keyLight.shadow.camera.far = 25
-  keyLight.shadow.camera.left = -10
-  keyLight.shadow.camera.right = 10
-  keyLight.shadow.camera.top = 10
-  keyLight.shadow.camera.bottom = -10
+  keyLight.shadow.mapSize.set(2048, 2048)
+  keyLight.shadow.camera.near = 0.5
+  keyLight.shadow.camera.far = 40
+  keyLight.shadow.camera.left = -18
+  keyLight.shadow.camera.right = 18
+  keyLight.shadow.camera.top = 18
+  keyLight.shadow.camera.bottom = -18
   scene.add(keyLight)
 
-  const rimLight = new THREE.DirectionalLight('#ffe9d4', 1.2)
-  rimLight.position.set(-4, 4, -5)
+  const rimLight = new THREE.DirectionalLight('#f6c7db', 1.1)
+  rimLight.position.set(-9, 8, -10)
   scene.add(rimLight)
 
-  const fillLight = new THREE.PointLight('#ffd9a0', 1.5, 18, 2)
-  fillLight.position.set(0, 3.8, 1.8)
+  const fillLight = new THREE.PointLight('#f5d5e8', 0.85, 20, 2)
+  fillLight.position.set(1.6, 4.6, -2)
   scene.add(fillLight)
-
-  const shadowPlane = new THREE.Mesh(
-    new THREE.CircleGeometry(1.6, 48),
-    new THREE.MeshBasicMaterial({
-      color: '#000000',
-      transparent: true,
-      opacity: 0.12,
-    }),
-  )
-  shadowPlane.rotation.x = -Math.PI / 2
-  shadowPlane.position.set(0, 0.02, 0)
-  room.add(shadowPlane)
 
   const lightPulse = () => {
     const time = performance.now() * 0.001
-    focusGlow.material.emissiveIntensity = 1.35 + Math.sin(time * 2.1) * 0.12
-    fillLight.intensity = 1.4 + Math.sin(time * 1.6) * 0.08
-    room.rotation.y = Math.sin(time * 0.12) * 0.04
+    fillLight.intensity = 0.82 + Math.sin(time * 0.9) * 0.08
+    chair.rotation.y = Math.sin(time * 0.42) * 0.06
   }
 
   const resize = () => {
@@ -262,41 +276,201 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <main class="workspace-shell">
-    <aside class="sidebar">
-      <p class="eyebrow">Week 1</p>
-      <h1>Memorial Space</h1>
-      <p class="intro">
-        The first working editor surface is now live: Vue 3 is wired up and the Three.js room,
-        camera, lighting, and floor are rendered in the browser.
-      </p>
-
-      <section class="status-card">
-        <p class="status-label">Done today</p>
-        <ul>
-          <li>Vue 3 + Vite scaffold</li>
-          <li>Three.js scene mount</li>
-          <li>OrbitControls camera</li>
-          <li>Lighting and floor setup</li>
-        </ul>
-      </section>
-
-      <section class="status-card accent">
-        <p class="status-label">Next up</p>
-        <p>Load a GLB asset, then add placement controls and selection.</p>
-      </section>
-    </aside>
-
-    <section class="viewport">
-      <div class="viewport-frame">
-        <canvas ref="canvasRef" class="scene-canvas" aria-label="Memorial space 3D scene"></canvas>
+  <main class="editor-shell">
+    <header class="top-bar">
+      <div class="brand-lockup">
+        <div class="brand-mark" aria-hidden="true"></div>
+        <span>BRAND</span>
       </div>
 
-      <div class="hint-bar">
-        <span>Drag to orbit</span>
-        <span>Scroll to zoom</span>
-        <span>Right click to pan</span>
+      <div class="profile-area">
+        <span>Naam</span>
+        <button type="button" class="icon-button" aria-label="Edit profile">Edit</button>
+        <button type="button" class="avatar" aria-label="Open profile"></button>
       </div>
+    </header>
+
+    <section class="scene-stage">
+      <canvas ref="canvasRef" class="scene-canvas" aria-label="Memorial space 3D scene"></canvas>
+
+      <nav class="action-dock" aria-label="Quick actions">
+        <button type="button" class="dock-button">
+          <span class="dock-icon">+</span>
+          <span class="dock-label">Media</span>
+        </button>
+        <button type="button" class="dock-button">
+          <span class="dock-icon">Msg</span>
+          <span class="dock-label">Berichten</span>
+        </button>
+        <button type="button" class="dock-button">
+          <span class="dock-icon">Fam</span>
+          <span class="dock-label">Kaarsje</span>
+        </button>
+      </nav>
     </section>
   </main>
 </template>
+
+<style scoped>
+.editor-shell {
+  height: 100vh;
+  background: transparent;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.top-bar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  color: #101010;
+  background: rgba(255, 255, 255, 0.62);
+  border-bottom: 1px solid #d8d8d8;
+  backdrop-filter: blur(12px);
+  padding: 18px 38px;
+}
+
+.brand-lockup {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-family: 'Trebuchet MS', 'Segoe UI', sans-serif;
+  font-size: 32px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+}
+
+.brand-mark {
+  width: 40px;
+  height: 40px;
+  border: 5px solid #080808;
+  transform: rotate(45deg);
+  position: relative;
+}
+
+.brand-mark::before,
+.brand-mark::after {
+  content: '';
+  position: absolute;
+  background: rgba(255, 255, 255, 0.92);
+}
+
+.brand-mark::before {
+  inset: 6px 14px;
+}
+
+.brand-mark::after {
+  inset: 14px 6px;
+}
+
+.profile-area {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-family: 'Trebuchet MS', 'Segoe UI', sans-serif;
+  font-size: 28px;
+}
+
+.icon-button {
+  border: none;
+  background: transparent;
+  color: #101010;
+  font-size: 18px;
+  font-weight: 600;
+  padding: 4px 8px;
+}
+
+.avatar {
+  width: 50px;
+  height: 50px;
+  border-radius: 999px;
+  border: 1px solid #d1d1d1;
+  background: radial-gradient(circle at 50% 26%, #0e0e0e 0 18%, transparent 19%),
+    radial-gradient(circle at 50% 75%, #0e0e0e 0 28%, transparent 29%),
+    #dcdcdc;
+}
+
+.scene-stage {
+  flex: 1;
+  min-height: 0;
+  position: relative;
+  background: transparent;
+  overflow: hidden;
+}
+
+.scene-canvas {
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+.action-dock {
+  position: absolute;
+  left: 20px;
+  bottom: 16px;
+  display: flex;
+  gap: 12px;
+}
+
+.dock-button {
+  width: 98px;
+  height: 84px;
+  border: 1px solid #dfdfdf;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.74);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
+
+.dock-icon {
+  font-family: 'Trebuchet MS', 'Segoe UI', sans-serif;
+  font-weight: 800;
+  font-size: 28px;
+  line-height: 1;
+  color: #050505;
+}
+
+.dock-label {
+  font-size: 12px;
+  color: #6f6f6f;
+}
+
+@media (max-width: 960px) {
+  .editor-shell {
+    padding: 0;
+  }
+
+  .top-bar {
+    padding: 12px 16px;
+  }
+
+  .brand-lockup {
+    font-size: 22px;
+  }
+
+  .profile-area {
+    font-size: 20px;
+  }
+
+  .action-dock {
+    left: 12px;
+    right: 12px;
+    justify-content: center;
+    flex-wrap: wrap;
+  }
+
+  .dock-button {
+    width: 92px;
+    height: 76px;
+  }
+
+  .dock-icon {
+    font-size: 24px;
+  }
+}
+</style>
