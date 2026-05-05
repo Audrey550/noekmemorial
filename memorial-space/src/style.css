@@ -1,25 +1,121 @@
 :root {
-  color: #291f18;
-  background:
-    radial-gradient(circle at top left, rgba(194, 164, 130, 0.2), transparent 36%),
-    radial-gradient(circle at bottom right, rgba(216, 194, 172, 0.18), transparent 28%),
-    #f4ede4;
-  font-family: 'Aptos', 'Segoe UI', sans-serif;
-  line-height: 1.5;
+  --font-heading-1: 'Alpino', 'Arial Narrow', sans-serif;
+  --font-heading-2: 'Ambella', 'Georgia', serif;
+  --font-heading-3: 'Outfit', 'Segoe UI', sans-serif;
+  --font-heading-4: 'Outfit', 'Segoe UI', sans-serif;
+  --font-body: 'Poppins', 'Segoe UI', 'Helvetica Neue', Arial, sans-serif;
+  --font-link: 'Poppins', 'Segoe UI', 'Helvetica Neue', Arial, sans-serif;
+  --font-button: 'Outfit', 'Segoe UI', sans-serif;
+  --font-label: 'Outfit', 'Segoe UI', sans-serif;
+  --font-small: 'Outfit', 'Segoe UI', sans-serif;
+  --font-quote: 'Ambella', 'Georgia', serif;
+
+  --type-h1-size: 32px;
+  --type-h1-line: 56px;
+  --type-h2-size: 28px;
+  --type-h2-line: 48px;
+  --type-h3-size: 24px;
+  --type-h3-line: 32px;
+  --type-h4-size: 20px;
+  --type-h4-line: 28px;
+  --type-body-size: 16px;
+  --type-body-line: 24px;
+  --type-link-line: 28px;
+  --type-button-size: 20px;
+  --type-button-line: 28px;
+  --type-label-size: 24px;
+  --type-label-line: 28px;
+  --type-small-size: 14px;
+  --type-small-line: 16px;
+  --type-quote-size: 24px;
+  --type-quote-line: 40px;
+
+  --page-bg: #f6f0e8;
+  --page-bg-gradient: linear-gradient(90deg, rgba(213, 214, 237, 0.42) 0%, rgba(249, 226, 224, 0.34) 33%, rgba(252, 249, 239, 0.9) 100%);
+  --surface: rgba(255, 251, 247, 0.76);
+  --surface-strong: rgba(255, 251, 247, 0.95);
+  --surface-muted: rgba(255, 255, 255, 0.48);
+  --border-soft: rgba(66, 47, 31, 0.12);
+  --border-strong: rgba(66, 47, 31, 0.18);
+  --shadow-soft: 0 22px 54px rgba(81, 58, 38, 0.14);
+  --shadow-strong: 0 30px 80px rgba(81, 58, 38, 0.18);
+
+  --text-primary: #241912;
+  --text-secondary: rgba(36, 25, 18, 0.7);
+  --text-tertiary: rgba(36, 25, 18, 0.52);
+
+  --brand-ink: #0f0f0f;
+  --brand-pink: #f08bb8;
+  --brand-cyan: #55c9d0;
+  --brand-lilac: #c8b0ff;
+  --brand-gold: #caa177;
+
+  --ring: rgba(80, 129, 187, 0.28);
+  --canvas-border: rgba(66, 47, 31, 0.16);
+}
+
+@font-face {
+  font-family: 'Alpino';
+  src: url('/fonts/Alpino-Thin.otf') format('opentype');
+  font-style: normal;
+  font-weight: 100;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'Alpino';
+  src: url('/fonts/Alpino-Light.otf') format('opentype');
+  font-style: normal;
+  font-weight: 300;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'Alpino';
+  src: url('/fonts/Alpino-Regular.otf') format('opentype');
+  font-style: normal;
   font-weight: 400;
-  font-synthesis: none;
-  text-rendering: optimizeLegibility;
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
-  --panel: rgba(255, 250, 244, 0.72);
-  --panel-strong: rgba(255, 250, 244, 0.92);
-  --border: rgba(100, 72, 45, 0.12);
-  --border-strong: rgba(100, 72, 45, 0.18);
-  --shadow: 0 24px 70px rgba(79, 53, 29, 0.16);
-  --accent: #8d5a2d;
-  --accent-soft: #caa177;
-  --text-muted: rgba(41, 31, 24, 0.72);
-  --canvas-border: rgba(76, 54, 33, 0.16);
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'Alpino';
+  src: url('/fonts/Alpino-Medium.otf') format('opentype');
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'Alpino';
+  src: url('/fonts/Alpino-Bold.otf') format('opentype');
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'Alpino';
+  src: url('/fonts/Alpino-Black.otf') format('opentype');
+  font-style: normal;
+  font-weight: 900;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'Ambella';
+  src: url('/fonts/Ambella-nAy9O.ttf') format('truetype');
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'Ambella';
+  src: url('/fonts/AmbellaItalic-lxWRw.ttf') format('truetype');
+  font-style: italic;
+  font-weight: 400;
+  font-display: swap;
 }
 
 * {
@@ -35,6 +131,15 @@ body,
 
 body {
   min-height: 100vh;
+  color: var(--text-primary);
+  background: var(--page-bg-gradient);
+  font-family: var(--font-body);
+  line-height: 1.5;
+  font-weight: 400;
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
 
 button,
@@ -45,10 +150,211 @@ textarea {
 
 button {
   cursor: pointer;
+  font-family: var(--font-button);
+}
+
+button:focus-visible,
+a:focus-visible,
+input:focus-visible,
+textarea:focus-visible {
+  outline: 3px solid var(--ring);
+  outline-offset: 2px;
 }
 
 a {
   color: inherit;
+  font-family: var(--font-link);
+  font-size: var(--type-body-size);
+  line-height: var(--type-link-line);
+}
+
+h1,
+h2,
+h3,
+h4,
+p {
+  margin: 0;
+}
+
+h1 {
+  font-family: var(--font-heading-1);
+  font-size: var(--type-h1-size);
+  line-height: var(--type-h1-line);
+  font-weight: 400;
+  letter-spacing: 0;
+}
+
+h2 {
+  font-family: var(--font-heading-2);
+  font-size: var(--type-h2-size);
+  line-height: var(--type-h2-line);
+  font-weight: 400;
+  letter-spacing: 0.06em;
+}
+
+h3 {
+  font-family: var(--font-heading-3);
+  font-size: var(--type-h3-size);
+  line-height: var(--type-h3-line);
+  font-weight: 400;
+  letter-spacing: -0.02em;
+}
+
+h4 {
+  font-family: var(--font-heading-4);
+  font-size: var(--type-h4-size);
+  line-height: var(--type-h4-line);
+  font-weight: 400;
+  letter-spacing: -0.01em;
+}
+
+p {
+  font-size: var(--type-body-size);
+  line-height: var(--type-body-line);
+}
+
+.brand-mark {
+  width: 40px;
+  height: 40px;
+  border: 5px solid var(--brand-ink);
+  transform: rotate(45deg);
+  position: relative;
+  flex: 0 0 auto;
+}
+
+.brand-mark::before,
+.brand-mark::after {
+  content: '';
+  position: absolute;
+  background: #efefef;
+}
+
+.brand-mark::before {
+  inset: 6px 14px;
+}
+
+.brand-mark::after {
+  inset: 14px 6px;
+}
+
+.surface-panel {
+  border: 1px solid var(--border-soft);
+  background: var(--surface);
+  backdrop-filter: blur(18px);
+  box-shadow: var(--shadow-soft);
+}
+
+.surface-panel-strong {
+  border: 1px solid var(--border-strong);
+  background: var(--surface-strong);
+  box-shadow: var(--shadow-strong);
+}
+
+.text-secondary {
+  color: var(--text-secondary);
+}
+
+.text-tertiary {
+  color: var(--text-tertiary);
+}
+
+.brand-title {
+  font-family: var(--font-heading-1);
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.type-body {
+  font-family: var(--font-body);
+  font-size: var(--type-body-size);
+  line-height: var(--type-body-line);
+  font-weight: 400;
+}
+
+.type-link {
+  font-family: var(--font-link);
+  font-size: var(--type-body-size);
+  line-height: var(--type-link-line);
+  font-weight: 400;
+}
+
+.type-button {
+  font-family: var(--font-button);
+  font-size: var(--type-button-size);
+  line-height: var(--type-button-line);
+  font-weight: 600;
+}
+
+.type-label {
+  font-family: var(--font-label);
+  font-size: var(--type-label-size);
+  line-height: var(--type-label-line);
+  font-weight: 600;
+}
+
+.type-small {
+  font-family: var(--font-small);
+  font-size: var(--type-small-size);
+  line-height: var(--type-small-line);
+  font-weight: 300;
+}
+
+.type-quote {
+  font-family: var(--font-quote);
+  font-size: var(--type-quote-size);
+  line-height: var(--type-quote-line);
+  font-style: italic;
+  letter-spacing: 0.1em;
+}
+
+.type-h1 {
+  font-family: var(--font-heading-1);
+  font-size: var(--type-h1-size);
+  line-height: var(--type-h1-line);
+  font-weight: 400;
+}
+
+.type-h2 {
+  font-family: var(--font-heading-2);
+  font-size: var(--type-h2-size);
+  line-height: var(--type-h2-line);
+  font-weight: 400;
+}
+
+.type-h3 {
+  font-family: var(--font-heading-3);
+  font-size: var(--type-h3-size);
+  line-height: var(--type-h3-line);
+  font-weight: 400;
+}
+
+.type-h4 {
+  font-family: var(--font-heading-4);
+  font-size: var(--type-h4-size);
+  line-height: var(--type-h4-line);
+  font-weight: 400;
+}
+
+.type-heading,
+.type-brand {
+  font-family: var(--font-heading-1);
+}
+
+.icon-chip {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  border: 1px solid var(--border-soft);
+  background: rgba(255, 255, 255, 0.72);
+  color: var(--brand-ink);
+}
+
+.logo-image {
+  display: block;
+  width: 100%;
+  height: auto;
 }
 
 .workspace-shell {
