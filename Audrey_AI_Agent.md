@@ -5,9 +5,10 @@ This is the running log for the work we do in this project. I will keep it updat
 ## Current Focus
 
 - Project: Memorial Space
-- Current milestone: Week 1 basic 3D editor
+- Current milestone: Week 1 basic 3D editor - NEAR COMPLETE
 - Stack: Vue 3 + Three.js + Supabase
 - Source roadmap: [memorial_space_roadmap.txt](memorial_space_roadmap.txt)
+- Status: Functional demo ready for stakeholder feedback
 
 ## Active Requests
 
@@ -47,6 +48,72 @@ This is the running log for the work we do in this project. I will keep it updat
 | 2026-05-05 | Reduce navbar height by adjusting padding. | Done | Changed .top-bar padding from 18px 38px to 12px 38px for a thinner navbar. |
 | 2026-05-05 | Align navbar to MSG end and make it taller. | Done | Updated .top-bar margin to 30px 228px so edges align with MSG end, and increased padding to 16px 38px for more height. |
 | 2026-05-05 | Clarify navbar account controls semantics. | Done | Wired username display to a reactive `username` state and kept Edit as a standalone button ready for future icon replacement. |
+| 2026-05-06 | Build Week 1 demo: load 3 asset types, create asset panel, add object placement. | Done | Implemented GLTFLoader with fallback to placeholder models (Candle, Photo Frame, Flower). Created AssetPanel.vue component. Added addObjectToScene() with random placement. All 3 objects tested and rendering correctly with shadows and lighting. |
+| 2026-05-06 | Add floor visibility toggle in navbar and sidebar. | Done | Added shared showFloor state, a navbar toggle next to the account controls, and a matching toggle inside the Media asset panel so the floor can be hidden or restored without losing keyboard access. |
+| 2026-05-06 | Replace Edit button with avatar menu. | Done | Removed the standalone Edit button and replaced it with an accessible avatar-triggered menu that opens on click/keyboard, closes on Escape or outside click, and keeps Instellingen available inside the account area. |
+| 2026-05-06 | Expand quick-action buttons into shared sidebar views. | Done | Wired Media, Msg, and Fam into one quick panel controller. Media still adds assets, Msg now shows sample messages and a compose box, and Fam shows a memorial/family action panel while keeping the floor toggle available. |
+| 2026-05-06 | Convert Media flow to Foto upload/gallery wizard. | In progress | Replaced the media subchoices with Foto, Audio, and Video. Started the Foto flow with upload/gallery selection, title and text fields, plus a room placement path and hover tooltip for placed photos. |
+
+## Session Snapshot (2026-05-06)
+
+### What Was Done Today
+
+- **Core Achievement:** Week 1 MVP is now functionally complete and demo-ready
+- Set up GLTFLoader and asset management system in SceneCanvas.vue
+- Created AssetPanel.vue component with clean UI showing 3 memorial object types:
+  - 🕯️ Kaars (Candle) - with emissive flame glow
+  - 🖼️ Fotolijst (Photo Frame) - wooden frame with picture
+  - 🌹 Bloem (Flower) - green stem with pink petal
+- Implemented `addObjectToScene()` function with:
+  - GLB loader with automatic fallback to procedurally-generated 3D models
+  - Random placement within the memorial space
+  - Full shadow and lighting support
+  - Scene state tracking via `sceneObjects` array
+- Tested all three asset types - all render correctly with proper lighting
+- Asset panel toggles smoothly via Media button in action dock
+- Demo is now visually polished and ready for stakeholder feedback
+- Added a floor visibility toggle in both the top navbar and the Media sidebar
+- Reordered account controls to the requested name, avatar, edit sequence
+- Replaced the separate Edit button with an accessible avatar menu containing Instellingen
+- Expanded the Media/Msg/Fam buttons into a shared panel system with distinct sidebar content
+- Started converting the Media panel into a Foto upload/gallery wizard with title, text, placement, and hover popup support
+
+### Technical Implementation Details
+
+**New/Modified Components:**
+- [SceneCanvas.vue](memorial-space/src/components/SceneCanvas.vue) - Added GLTFLoader, asset management, scene state, and object placement logic
+- [AssetPanel.vue](memorial-space/src/components/AssetPanel.vue) - New sidebar UI component for displaying available assets
+
+**Key Code Additions:**
+- `addObjectToScene(assetId)` - loads GLB or creates procedural fallback model
+- `createPlaceholderModel(assetId)` - generates Candle, Photo Frame, and Flower using Three.js primitives
+- `availableAssets` array - defines 3 asset types with metadata
+- Reactive `sceneObjects` array to track placed objects
+- Reactive `showAssetPanel` to toggle asset sidebar
+
+**Next Steps (Week 2 prep):**
+- Implement object selection with raycasting (click to select objects)
+- Add move/rotate/delete controls for selected objects
+- Show selected object details in a side panel
+- Enhance asset panel with real GLB models if desired (currently using procedural fallbacks)
+
+### What Needs To Be Done Tomorrow (Week 2 Start)
+
+1. **Object Selection** - Raycasting to click and select objects in the scene
+2. **Object Inspector** - Show selected object properties and allow editing
+3. **Transform Controls** - Move, rotate, scale selected objects
+4. **Delete Function** - Remove objects from scene
+5. **Scene State Persistence** - Save/load scene data structure (JSON)
+6. **Polish Pass** - UI refinements and edge case handling
+
+### Suggested Order For Week 2
+
+1. Implement mouse raycasting for object selection highlighting
+2. Add keyboard shortcuts (Delete key to remove, Ctrl+C/V to copy)
+3. Build an inspector sidebar showing selected object details
+4. Add gizmo/transform controls (move/rotate/scale)
+5. Implement basic save/load to localStorage first, then Supabase
+6. Test complex scenarios (many objects, rapid placement, etc.)
 
 ## Session Snapshot (2026-05-05)
 

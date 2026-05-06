@@ -2,14 +2,406 @@
 import { onBeforeUnmount, onMounted, ref } from 'vue'
 import * as THREE from 'three'
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js'
+import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js'
+import AssetPanel from './AssetPanel.vue'
 
 const canvasRef = ref(null)
 const username = ref('Naam')
+const sceneObjects = ref([])
+const showQuickPanel = ref(false)
+const activePanel = ref('media')
+const showFloor = ref(true)
+const showProfileMenu = ref(false)
+const hoveredPhoto = ref(null)
+const hoveredPhotoPosition = ref({ x: 0, y: 0 })
+const assetModels = ref([])
 
 let animationFrameId = 0
 let resizeObserver = null
 let renderer = null
 let controls = null
+let scene = null
+let room = null
+let camera = null
+let floorMesh = null
+let roomShadow = null
+let profileMenuElement = null
+let gltfLoader = new GLTFLoader()
+let photoTextureLoader = new THREE.TextureLoader()
+let raycaster = new THREE.Raycaster()
+let pointer = new THREE.Vector2()
+
+// Available models for the asset panel
+const availableAssets = [
+  { id: 'candle', name: 'Kaars', icon: '🕯️', file: '/models/candle.glb' },
+  { id: 'photo-frame', name: 'Fotolijst', icon: '🖼️', file: '/models/photo-frame.glb' },
+  { id: 'flower', name: 'Bloem', icon: '🌹', file: '/models/flower.glb' },
+]
+
+const openQuickPanel = (panelType) => {
+  if (activePanel.value === panelType && showQuickPanel.value) {
+    showQuickPanel.value = false
+    return
+  }
+
+  activePanel.value = panelType
+  showQuickPanel.value = true
+}
+
+const closeQuickPanel = () => {
+  showQuickPanel.value = false
+}
+
+const handlePlacePhoto = (photoData) => {
+  if (!scene || !room) {
+    return
+  }
+
+  placePhotoInRoom(photoData)
+}
+
+// Function to add an object to the scene
+const addObjectToScene = async (assetId) => {
+  const asset = availableAssets.find(a => a.id === assetId)
+  if (!asset || !scene) return
+
+  let model
+
+  try {
+    // Try to load GLB file
+    const gltf = await gltfLoader.loadAsync(asset.file)
+    model = gltf.scene.clone()
+  } catch (error) {
+    // Fallback: create placeholder models using Three.js primitives
+    console.log(`Creating placeholder for ${asset.id}`)
+    model = createPlaceholderModel(assetId)
+  }
+  
+  // Default placement in center of room
+  model.position.set(Math.random() * 2 - 1, 0.5, Math.random() * 2 - 1)
+  model.scale.set(1, 1, 1)
+  
+  // Enable shadows
+  model.traverse((child) => {
+    if (child.isMesh) {
+      child.castShadow = true
+      child.receiveShadow = true
+    }
+  })
+  
+  room.add(model)
+  
+  sceneObjects.value.push({
+    id: Date.now(),
+    assetId,
+    object: model,
+    position: model.position.clone(),
+    rotation: model.rotation.clone(),
+    scale: model.scale.clone(),
+  })
+}
+
+const toggleFloorVisibility = () => {
+  showFloor.value = !showFloor.value
+
+  if (floorMesh) {
+    floorMesh.visible = showFloor.value
+  }
+
+  if (roomShadow) {
+    roomShadow.visible = showFloor.value
+  }
+}
+
+const openProfileMenu = () => {
+  showProfileMenu.value = true
+}
+
+const closeProfileMenu = () => {
+  showProfileMenu.value = false
+}
+
+const toggleProfileMenu = () => {
+  showProfileMenu.value = !showProfileMenu.value
+}
+
+const handleDocumentClick = (event) => {
+  if (!showProfileMenu.value) {
+    return
+  }
+
+  if (profileMenuElement && !profileMenuElement.contains(event.target)) {
+    closeProfileMenu()
+  }
+}
+
+const handleDocumentKeydown = (event) => {
+  if (event.key === 'Escape') {
+    closeProfileMenu()
+  }
+}
+
+const clearHoveredPhoto = () => {
+  hoveredPhoto.value = null
+}
+
+const getPhotoDataFromObject = (object) => {
+  let currentObject = object
+
+  while (currentObject) {
+    if (currentObject.userData?.photoData) {
+      return currentObject.userData.photoData
+    }
+
+    currentObject = currentObject.parent
+  }
+
+  return null
+}
+
+const handleCanvasPointerMove = (event) => {
+  if (!renderer || !camera || !room) {
+    return
+  }
+
+  const rect = renderer.domElement.getBoundingClientRect()
+  pointer.x = ((event.clientX - rect.left) / rect.width) * 2 - 1
+  pointer.y = -(((event.clientY - rect.top) / rect.height) * 2 - 1)
+
+  raycaster.setFromCamera(pointer, camera)
+  const intersections = raycaster.intersectObjects(room.children, true)
+  const hoveredIntersection = intersections.find(intersection => getPhotoDataFromObject(intersection.object))
+
+  if (!hoveredIntersection) {
+    clearHoveredPhoto()
+    return
+  }
+
+  hoveredPhoto.value = getPhotoDataFromObject(hoveredIntersection.object)
+  hoveredPhotoPosition.value = {
+    x: event.clientX - rect.left + 16,
+    y: event.clientY - rect.top + 16,
+  }
+}
+
+const handleCanvasPointerLeave = () => {
+  clearHoveredPhoto()
+}
+
+// Helper function to create placeholder models
+const createPlaceholderModel = (assetId) => {
+  const group = new THREE.Group()
+  
+  if (assetId === 'candle') {
+    // Candle: cylinder with flame
+    const waxColor = new THREE.MeshStandardMaterial({ color: '#ffeaa7', roughness: 0.8 })
+    const wax = new THREE.Mesh(new THREE.CylinderGeometry(0.15, 0.15, 0.6, 16), waxColor)
+    wax.castShadow = true
+    group.add(wax)
+    
+    const flameColor = new THREE.MeshStandardMaterial({
+      color: '#ff6b00',
+      emissive: '#ff9900',
+      emissiveIntensity: 1,
+    })
+    const flame = new THREE.Mesh(new THREE.ConeGeometry(0.1, 0.4, 8), flameColor)
+    flame.position.y = 0.35
+    flame.castShadow = true
+    group.add(flame)
+  } else if (assetId === 'photo-frame') {
+    // Picture frame
+    const frameMaterial = new THREE.MeshStandardMaterial({ color: '#8b7355', roughness: 0.7 })
+    const frameBorder = new THREE.Mesh(new THREE.BoxGeometry(0.6, 0.8, 0.08), frameMaterial)
+    frameBorder.castShadow = true
+    group.add(frameBorder)
+    
+    const pictureMaterial = new THREE.MeshStandardMaterial({ color: '#d4a574', roughness: 0.3 })
+    const picture = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.7, 0.02), pictureMaterial)
+    picture.position.z = 0.05
+    picture.castShadow = true
+    group.add(picture)
+  } else if (assetId === 'flower') {
+    // Flower
+    const stemColor = new THREE.MeshStandardMaterial({ color: '#31bc77', roughness: 0.8 })
+    const stem = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.04, 0.5, 8), stemColor)
+    stem.castShadow = true
+    group.add(stem)
+    
+    const petalColor = new THREE.MeshStandardMaterial({ color: '#ff69b4', roughness: 0.9 })
+    const petal = new THREE.Mesh(new THREE.ConeGeometry(0.12, 0.25, 8), petalColor)
+    petal.position.y = 0.3
+    petal.castShadow = true
+    group.add(petal)
+  }
+  
+  return group
+}
+
+const createPhotoCard = (photoData) => {
+  const group = new THREE.Group()
+  group.userData.photoData = photoData
+
+  const frameMaterial = new THREE.MeshStandardMaterial({
+    color: '#f6f0ea',
+    roughness: 0.7,
+  })
+  const frame = new THREE.Mesh(new THREE.BoxGeometry(1.8, 1.4, 0.08), frameMaterial)
+  frame.castShadow = true
+  frame.receiveShadow = true
+  group.add(frame)
+
+  const photoPlateMaterial = new THREE.MeshStandardMaterial({
+    color: '#ffffff',
+    roughness: 0.95,
+  })
+  const photoPlate = new THREE.Mesh(new THREE.BoxGeometry(1.54, 1.08, 0.04), photoPlateMaterial)
+  photoPlate.position.z = 0.045
+  group.add(photoPlate)
+
+  const photoPlaneMaterial = new THREE.MeshStandardMaterial({
+    color: '#d9d9d9',
+    roughness: 0.9,
+  })
+  const photoPlane = new THREE.Mesh(new THREE.PlaneGeometry(1.48, 1.0), photoPlaneMaterial)
+  photoPlane.position.z = 0.055
+  group.add(photoPlane)
+
+  photoTextureLoader.load(photoData.sourceUrl, (texture) => {
+    texture.colorSpace = THREE.SRGBColorSpace
+    texture.needsUpdate = true
+    photoPlane.material.map = texture
+    photoPlane.material.needsUpdate = true
+  })
+
+  const standMaterial = new THREE.MeshStandardMaterial({
+    color: '#c7b8a6',
+    roughness: 0.9,
+  })
+  const standBase = new THREE.Mesh(new THREE.BoxGeometry(0.9, 0.1, 0.35), standMaterial)
+  standBase.position.set(0, -0.8, 0.05)
+  standBase.castShadow = true
+  group.add(standBase)
+
+  const captionStrip = new THREE.Mesh(
+    new THREE.BoxGeometry(1.32, 0.12, 0.03),
+    new THREE.MeshStandardMaterial({ color: '#f2d7e4', roughness: 0.7 }),
+  )
+  captionStrip.position.set(0, -0.58, 0.06)
+  group.add(captionStrip)
+
+  const captionBlock = new THREE.Mesh(
+    new THREE.BoxGeometry(0.95, 0.18, 0.03),
+    new THREE.MeshStandardMaterial({ color: '#f7f2fa', roughness: 0.55 }),
+  )
+  captionBlock.position.set(0, -0.46, 0.065)
+  group.add(captionBlock)
+
+  group.scale.set(1, 1, 1)
+  group.position.y = 1.05
+  group.rotation.y = -0.4
+
+  return group
+}
+
+const placePhotoInRoom = (photoData) => {
+  if (!room) {
+    return
+  }
+
+  const photoCard = createPhotoCard(photoData)
+  photoCard.position.set(1.55, 0, -2.2)
+  room.add(photoCard)
+
+  sceneObjects.value.push({
+    id: Date.now(),
+    assetId: 'photo',
+    object: photoCard,
+    photoData,
+    position: photoCard.position.clone(),
+    rotation: photoCard.rotation.clone(),
+    scale: photoCard.scale.clone(),
+  })
+}
+
+const handlePlaceMessage = (messageData) => {
+  if (!room) {
+    return
+  }
+
+  // Create a simple placeholder for the message in the room
+  const messageGroup = new THREE.Group()
+  messageGroup.position.set(0, 0.5, 0)
+  room.add(messageGroup)
+
+  sceneObjects.value.push({
+    id: Date.now(),
+    assetId: 'message',
+    object: messageGroup,
+    messageData,
+    position: messageGroup.position.clone(),
+    rotation: messageGroup.rotation.clone(),
+    scale: messageGroup.scale.clone(),
+  })
+}
+
+const handlePlaceCandle = (candleData) => {
+  if (!room) {
+    return
+  }
+
+  // Create a simple candle placeholder based on size
+  const candleGroup = new THREE.Group()
+  
+  // Create candle base cylinder
+  const baseGeometry = new THREE.CylinderGeometry(0.15, 0.15, 0.05, 32)
+  const baseMaterial = new THREE.MeshStandardMaterial({ color: 0xf5f5f0, roughness: 0.8 })
+  const base = new THREE.Mesh(baseGeometry, baseMaterial)
+  base.castShadow = true
+  base.receiveShadow = true
+  base.position.y = 0.025
+  candleGroup.add(base)
+
+  // Create candle body based on size
+  let candleHeight = 0.4
+  if (candleData.size?.id === 'small') candleHeight = 0.3
+  if (candleData.size?.id === 'large') candleHeight = 0.6
+
+  const candleGeometry = new THREE.CylinderGeometry(0.08, 0.08, candleHeight, 16)
+  const candleMaterial = new THREE.MeshStandardMaterial({ 
+    color: 0xfffacd,
+    emissive: 0xffeb3b,
+    emissiveIntensity: 0.3,
+  })
+  const candle = new THREE.Mesh(candleGeometry, candleMaterial)
+  candle.castShadow = true
+  candle.receiveShadow = true
+  candle.position.y = 0.05 + candleHeight / 2
+  candleGroup.add(candle)
+
+  // Create flame
+  const flameGeometry = new THREE.ConeGeometry(0.04, 0.15, 8)
+  const flameMaterial = new THREE.MeshStandardMaterial({
+    color: 0xffa500,
+    emissive: 0xffff00,
+    emissiveIntensity: 0.8,
+  })
+  const flame = new THREE.Mesh(flameGeometry, flameMaterial)
+  flame.position.y = 0.05 + candleHeight + 0.1
+  candleGroup.add(flame)
+
+  candleGroup.position.set(Math.random() * 2 - 1, 0.05, Math.random() * 2 - 1)
+  room.add(candleGroup)
+
+  sceneObjects.value.push({
+    id: Date.now(),
+    assetId: 'candle',
+    object: candleGroup,
+    candleData,
+    position: candleGroup.position.clone(),
+    rotation: candleGroup.rotation.clone(),
+    scale: candleGroup.scale.clone(),
+  })
+}
 
 onMounted(() => {
   const canvas = canvasRef.value
@@ -18,10 +410,10 @@ onMounted(() => {
     return
   }
 
-  const scene = new THREE.Scene()
+  scene = new THREE.Scene()
   scene.fog = new THREE.Fog('#ececec', 22, 64)
 
-  const camera = new THREE.PerspectiveCamera(34, 16 / 9, 0.1, 120)
+  camera = new THREE.PerspectiveCamera(34, 16 / 9, 0.1, 120)
   camera.position.set(17, 13, 17)
 
   renderer = new THREE.WebGLRenderer({
@@ -39,10 +431,10 @@ onMounted(() => {
   controls.enablePan = false
   controls.minDistance = 12
   controls.maxDistance = 30
-  controls.minPolarAngle = 0.72
-  controls.maxPolarAngle = 1.02
-  controls.minAzimuthAngle = -Math.PI / 1.35
-  controls.maxAzimuthAngle = -Math.PI / 3.2
+  controls.minPolarAngle = 0
+  controls.maxPolarAngle = Math.PI
+  controls.minAzimuthAngle = -Infinity
+  controls.maxAzimuthAngle = Infinity
   controls.target.set(0, 2.1, 0)
   controls.update()
 
@@ -53,10 +445,10 @@ onMounted(() => {
   worldGrid.material.opacity = 1
   scene.add(worldGrid)
 
-  const room = new THREE.Group()
+  room = new THREE.Group()
   room.position.y = 0.62
 
-  const floor = new THREE.Mesh(
+  floorMesh = new THREE.Mesh(
     new THREE.PlaneGeometry(9, 9),
     new THREE.MeshStandardMaterial({
       color: '#838991',
@@ -64,9 +456,9 @@ onMounted(() => {
       metalness: 0,
     }),
   )
-  floor.rotation.x = -Math.PI / 2
-  floor.receiveShadow = true
-  room.add(floor)
+  floorMesh.rotation.x = -Math.PI / 2
+  floorMesh.receiveShadow = true
+  room.add(floorMesh)
 
   const wallMaterial = new THREE.MeshStandardMaterial({
     color: '#f2afc7',
@@ -186,7 +578,7 @@ onMounted(() => {
   plant.castShadow = true
   room.add(plant)
 
-  const roomShadow = new THREE.Mesh(
+  roomShadow = new THREE.Mesh(
     new THREE.PlaneGeometry(9.4, 9.4),
     new THREE.ShadowMaterial({ opacity: 0.22 }),
   )
@@ -246,6 +638,11 @@ onMounted(() => {
   resizeObserver = new ResizeObserver(resize)
   resizeObserver.observe(canvas)
 
+  document.addEventListener('click', handleDocumentClick)
+  document.addEventListener('keydown', handleDocumentKeydown)
+  renderer.domElement.addEventListener('pointermove', handleCanvasPointerMove)
+  renderer.domElement.addEventListener('pointerleave', handleCanvasPointerLeave)
+
   const animate = () => {
     animationFrameId = window.requestAnimationFrame(animate)
     lightPulse()
@@ -258,6 +655,12 @@ onMounted(() => {
 
 onBeforeUnmount(() => {
   window.cancelAnimationFrame(animationFrameId)
+  if (renderer) {
+    renderer.domElement.removeEventListener('pointermove', handleCanvasPointerMove)
+    renderer.domElement.removeEventListener('pointerleave', handleCanvasPointerLeave)
+  }
+  document.removeEventListener('click', handleDocumentClick)
+  document.removeEventListener('keydown', handleDocumentKeydown)
 
   if (resizeObserver) {
     resizeObserver.disconnect()
@@ -284,10 +687,37 @@ onBeforeUnmount(() => {
         <span>BRAND</span>
       </div>
 
+      <button
+        type="button"
+        class="floor-toggle"
+        :aria-pressed="showFloor"
+        :title="showFloor ? 'Hide floor' : 'Show floor'"
+        @click="toggleFloorVisibility"
+      >
+        {{ showFloor ? 'Vloer aan' : 'Vloer uit' }}
+      </button>
+
       <div class="profile-area">
         <span class="profile-name">{{ username }}</span>
-        <button type="button" class="icon-button" aria-label="Edit profile" title="Edit profile">Edit</button>
-        <button type="button" class="avatar" aria-label="Open profile"></button>
+        <div ref="profileMenuElement" class="profile-menu-wrap">
+          <button
+            type="button"
+            class="avatar"
+            aria-haspopup="menu"
+            :aria-expanded="showProfileMenu"
+            aria-label="Open profile menu"
+            title="Open profile menu"
+            @click="toggleProfileMenu"
+            @keydown.enter.prevent="openProfileMenu"
+            @keydown.space.prevent="openProfileMenu"
+          ></button>
+
+          <div v-if="showProfileMenu" class="profile-menu" role="menu" aria-label="Profile options">
+            <button type="button" class="profile-menu-item" role="menuitem" @click="closeProfileMenu">
+              Instellingen
+            </button>
+          </div>
+        </div>
       </div>
     </header>
 
@@ -295,22 +725,45 @@ onBeforeUnmount(() => {
       <canvas ref="canvasRef" class="scene-canvas" aria-label="Memorial space 3D scene"></canvas>
 
       <nav class="action-dock" aria-label="Quick actions">
-        <button type="button" class="dock-button">
+        <button type="button" class="dock-button" :class="{ active: showQuickPanel && activePanel === 'media' }" @click="openQuickPanel('media')">
           <span class="dock-icon">+</span>
           <span class="dock-label">Media</span>
         </button>
-        <button type="button" class="dock-button">
+        <button type="button" class="dock-button" :class="{ active: showQuickPanel && activePanel === 'messages' }" @click="openQuickPanel('messages')">
           <span class="dock-icon">Msg</span>
           <span class="dock-label">Berichten</span>
         </button>
-        <button type="button" class="dock-button">
+        <button type="button" class="dock-button" :class="{ active: showQuickPanel && activePanel === 'family' }" @click="openQuickPanel('family')">
           <span class="dock-icon">Fam</span>
           <span class="dock-label">Kaarsje</span>
         </button>
       </nav>
+
+      <AssetPanel
+        v-if="showQuickPanel"
+        :show-floor="showFloor"
+        :panel-type="activePanel"
+        @toggle-floor="toggleFloorVisibility"
+        @close-panel="closeQuickPanel"
+        @place-photo="handlePlacePhoto"
+        @place-message="handlePlaceMessage"
+        @place-candle="handlePlaceCandle"
+      />
+
+      <div
+        v-if="hoveredPhoto"
+        class="photo-tooltip"
+        :style="{
+          left: `${hoveredPhotoPosition.x}px`,
+          top: `${hoveredPhotoPosition.y}px`,
+        }"
+      >
+        <strong>{{ hoveredPhoto.title }}</strong>
+        <p>{{ hoveredPhoto.text || 'Geen extra tekst toegevoegd.' }}</p>
+      </div>
     </section>
   </main>
-</template>
+</template>"}}]}]}
 
 <style scoped>
 .editor-shell {
@@ -334,6 +787,23 @@ onBeforeUnmount(() => {
   box-shadow: 0 5px 10px 0 rgba(0, 0, 0, 0.2);
   padding: 16px 38px;
   margin: 30px 228px;
+}
+
+.floor-toggle {
+  border: 1px solid #d7d7d7;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.85);
+  color: #1a1a1a;
+  font-family: 'Outfit', 'Segoe UI', sans-serif;
+  font-size: 16px;
+  font-weight: 600;
+  padding: 10px 16px;
+  margin-left: auto;
+  margin-right: 18px;
+}
+
+.floor-toggle:hover {
+  background: rgba(255, 255, 255, 0.98);
 }
 
 .brand-lockup {
@@ -378,14 +848,8 @@ onBeforeUnmount(() => {
   color: #1a1a1a;
 }
 
-.icon-button {
-  border: none;
-  background: transparent;
-  color: #1a1a1a;
-  font-family: 'Outfit', 'Segoe UI', sans-serif;
-  font-size: 18px;
-  font-weight: 600;
-  padding: 4px 8px;
+.profile-menu-wrap {
+  position: relative;
 }
 
 .avatar {
@@ -396,6 +860,39 @@ onBeforeUnmount(() => {
   background: radial-gradient(circle at 50% 26%, #0e0e0e 0 18%, transparent 19%),
     radial-gradient(circle at 50% 75%, #0e0e0e 0 28%, transparent 29%),
     #dcdcdc;
+}
+
+.profile-menu {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 10px);
+  min-width: 180px;
+  padding: 8px;
+  border: 1px solid #e0e0e0;
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.96);
+  box-shadow: 0 14px 30px rgba(0, 0, 0, 0.14);
+  backdrop-filter: blur(12px);
+  z-index: 20;
+}
+
+.profile-menu-item {
+  width: 100%;
+  border: none;
+  border-radius: 10px;
+  background: transparent;
+  color: #1a1a1a;
+  font-family: 'Outfit', 'Segoe UI', sans-serif;
+  font-size: 15px;
+  font-weight: 600;
+  padding: 10px 12px;
+  text-align: left;
+}
+
+.profile-menu-item:hover,
+.profile-menu-item:focus-visible {
+  background: rgba(242, 175, 199, 0.18);
+  outline: none;
 }
 
 .scene-stage {
@@ -433,6 +930,12 @@ onBeforeUnmount(() => {
   gap: 8px;
 }
 
+.dock-button.active {
+  border-color: #c88fb8;
+  background: rgba(242, 175, 199, 0.24);
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.12);
+}
+
 .dock-icon {
   font-family: 'Trebuchet MS', 'Segoe UI', sans-serif;
   font-weight: 800;
@@ -444,6 +947,37 @@ onBeforeUnmount(() => {
 .dock-label {
   font-size: 12px;
   color: #6f6f6f;
+}
+
+.photo-tooltip {
+  position: absolute;
+  z-index: 25;
+  min-width: 180px;
+  max-width: 240px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.96);
+  border: 1px solid rgba(96, 76, 150, 0.2);
+  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.16);
+  color: #1a1a1a;
+  pointer-events: none;
+  backdrop-filter: blur(10px);
+}
+
+.photo-tooltip strong {
+  display: block;
+  margin-bottom: 4px;
+  font-family: 'Outfit', 'Segoe UI', sans-serif;
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.photo-tooltip p {
+  margin: 0;
+  font-family: 'Outfit', 'Segoe UI', sans-serif;
+  font-size: 12px;
+  line-height: 1.45;
+  color: #48415f;
 }
 
 @media (max-width: 960px) {
