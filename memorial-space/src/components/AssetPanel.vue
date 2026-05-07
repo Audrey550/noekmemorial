@@ -12,7 +12,7 @@ const props = defineProps({
   },
 })
 
-const emit = defineEmits(['add-asset', 'toggle-floor', 'close-panel', 'place-photo', 'place-message', 'place-candle'])
+const emit = defineEmits(['add-asset', 'toggle-floor', 'close-panel', 'place-photo', 'place-message', 'place-candle', 'place-audio', 'place-video'])
 
 const mediaMode = ref('chooser')
 const photoSourceMode = ref('gallery')
@@ -22,6 +22,30 @@ const selectedGalleryPhotoId = ref('sunset-memory')
 const photoTitle = ref('')
 const photoText = ref('')
 const photoFileInput = ref(null)
+
+// Audio flow state
+const audioSourceMode = ref('upload')
+const audioFileInput = ref(null)
+const uploadedAudios = ref([])
+const selectedAudio = ref(null)
+const audioUrlInput = ref('')
+const audioTitle = ref('')
+const audioText = ref('')
+const isRecording = ref(false)
+let mediaRecorder = null
+let audioChunks = []
+
+// Video flow state
+const videoSourceMode = ref('upload')
+const videoFileInput = ref(null)
+const uploadedVideos = ref([])
+const selectedVideo = ref(null)
+const videoUrlInput = ref('')
+const videoTitle = ref('')
+const videoText = ref('')
+const isVideoRecording = ref(false)
+let videoRecorder = null
+let videoChunks = []
 
 // Message flow state
 const messageText = ref('')
@@ -104,17 +128,12 @@ const currentPhotoPreview = computed(() => {
 })
 
 const panelHeading = computed(() => {
-  if (props.panelType !== 'media') {
-    return panelTitle[props.panelType]
-  }
+  if (props.panelType !== 'media') return panelTitle[props.panelType]
 
-  if (mediaMode.value === 'photo-source' || mediaMode.value === 'photo-details') {
-    return 'Media - Foto'
-  }
-
-  if (mediaMode.value === 'coming-soon') {
-    return 'Binnenkort'
-  }
+  if (mediaMode.value === 'photo-source' || mediaMode.value === 'photo-details') return 'Media - Foto'
+  if (mediaMode.value === 'audio-source' || mediaMode.value === 'audio-details') return 'Media - Audio'
+  if (mediaMode.value === 'video-source' || mediaMode.value === 'video-details') return 'Media - Video'
+  if (mediaMode.value === 'coming-soon') return 'Binnenkort'
 
   return panelTitle.media
 })
@@ -126,6 +145,14 @@ const panelCopy = computed(() => {
 
   if (mediaMode.value === 'photo-source') {
     return 'Upload één of meerdere foto’s van je eigen apparaat of kies uit onze galerie.'
+  }
+
+  if (mediaMode.value === 'audio-source') {
+    return 'Upload een audiobestand, plak een URL of neem een kort bericht op.'
+  }
+
+  if (mediaMode.value === 'video-source') {
+    return 'Upload een videobestand, plak een URL of neem een korte opname met je camera.'
   }
 
   if (mediaMode.value === 'photo-details') {
@@ -171,6 +198,16 @@ const openMediaOption = (optionId) => {
     return
   }
 
+  if (optionId === 'audio') {
+    mediaMode.value = 'audio-source'
+    return
+  }
+
+  if (optionId === 'video') {
+    mediaMode.value = 'video-source'
+    return
+  }
+
   mediaMode.value = 'coming-soon'
 }
 
@@ -212,6 +249,156 @@ const handlePhotoFileChange = async (event) => {
   mediaMode.value = 'photo-details'
 }
 
+// Audio helpers
+const readAudioFileAsUrl = (file) => {
+  return new Promise((resolve, reject) => {
+    const url = URL.createObjectURL(file)
+    resolve(url)
+  })
+}
+
+const handleAudioFileChange = async (event) => {
+  const files = Array.from(event.target.files || [])
+
+  if (files.length === 0) return
+
+  const loaded = await Promise.all(files.map(async (file) => ({
+    id: `audio-${file.name}-${file.size}-${Date.now()}`,
+    name: file.name,
+    url: await readAudioFileAsUrl(file),
+  })))
+
+  uploadedAudios.value = loaded
+  selectedAudio.value = loaded[0]
+  mediaMode.value = 'audio-details'
+}
+
+const continueToAudioDetails = () => {
+  if (audioUrlInput.value && !selectedAudio.value) {
+    selectedAudio.value = { id: `url-${Date.now()}`, name: 'Link audio', url: audioUrlInput.value }
+  }
+
+  if (!selectedAudio.value && uploadedAudios.value.length) {
+    selectedAudio.value = uploadedAudios.value[0]
+  }
+
+  if (!selectedAudio.value) return
+  mediaMode.value = 'audio-details'
+}
+
+const startRecording = async () => {
+  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) return
+
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+    mediaRecorder = new MediaRecorder(stream)
+    audioChunks = []
+    mediaRecorder.ondataavailable = (ev) => audioChunks.push(ev.data)
+    mediaRecorder.onstop = () => {
+      const blob = new Blob(audioChunks, { type: 'audio/webm' })
+      const url = URL.createObjectURL(blob)
+      selectedAudio.value = { id: `rec-${Date.now()}`, name: 'Recording.webm', url }
+      isRecording.value = false
+      mediaMode.value = 'audio-details'
+    }
+    mediaRecorder.start()
+    isRecording.value = true
+  } catch (err) {
+    console.warn('Recording failed', err)
+  }
+}
+
+const stopRecording = () => {
+  if (mediaRecorder && mediaRecorder.state === 'recording') {
+    mediaRecorder.stop()
+  }
+}
+
+// Video helpers
+const readVideoFileAsUrl = (file) => {
+  return new Promise((resolve) => {
+    const url = URL.createObjectURL(file)
+    resolve(url)
+  })
+}
+
+const handleVideoFileChange = async (event) => {
+  const files = Array.from(event.target.files || [])
+  if (files.length === 0) return
+
+  const loaded = await Promise.all(files.map(async (file) => ({
+    id: `video-${file.name}-${file.size}-${Date.now()}`,
+    name: file.name,
+    url: await readVideoFileAsUrl(file),
+  })))
+
+  uploadedVideos.value = loaded
+  selectedVideo.value = loaded[0]
+  mediaMode.value = 'video-details'
+}
+
+const continueToVideoDetails = () => {
+  if (videoUrlInput.value && !selectedVideo.value) {
+    selectedVideo.value = { id: `url-${Date.now()}`, name: 'Link video', url: videoUrlInput.value }
+  }
+
+  if (!selectedVideo.value && uploadedVideos.value.length) {
+    selectedVideo.value = uploadedVideos.value[0]
+  }
+
+  if (!selectedVideo.value) return
+  mediaMode.value = 'video-details'
+}
+
+const startVideoRecording = async () => {
+  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) return
+
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true })
+    videoRecorder = new MediaRecorder(stream)
+    videoChunks = []
+    videoRecorder.ondataavailable = (ev) => videoChunks.push(ev.data)
+    videoRecorder.onstop = () => {
+      const blob = new Blob(videoChunks, { type: 'video/webm' })
+      const url = URL.createObjectURL(blob)
+      selectedVideo.value = { id: `rec-${Date.now()}`, name: 'Recording.webm', url }
+      isVideoRecording.value = false
+      mediaMode.value = 'video-details'
+    }
+    videoRecorder.start()
+    isVideoRecording.value = true
+  } catch (err) {
+    console.warn('Video recording failed', err)
+  }
+}
+
+const stopVideoRecording = () => {
+  if (videoRecorder && videoRecorder.state === 'recording') {
+    videoRecorder.stop()
+  }
+}
+
+const placeVideo = () => {
+  const selected = selectedVideo.value
+  if (!selected) return
+
+  emit('place-video', {
+    sourceUrl: selected.url,
+    sourceName: selected.name,
+    title: videoTitle.value.trim() || 'Nieuwe video',
+    text: videoText.value.trim(),
+  })
+
+  // reset
+  videoTitle.value = ''
+  videoText.value = ''
+  selectedVideo.value = null
+  uploadedVideos.value = []
+  videoUrlInput.value = ''
+  mediaMode.value = 'chooser'
+  handleClosePanel()
+}
+
 const selectGalleryPhoto = (photo) => {
   selectedGalleryPhotoId.value = photo.id
   selectedPhoto.value = photo
@@ -220,6 +407,27 @@ const selectGalleryPhoto = (photo) => {
 const continueToPhotoDetails = () => {
   selectedPhoto.value = selectedPhoto.value || sampleGalleryPhotos.find(photo => photo.id === selectedGalleryPhotoId.value) || sampleGalleryPhotos[0]
   mediaMode.value = 'photo-details'
+}
+
+const placeAudio = () => {
+  const selected = selectedAudio.value
+  if (!selected) return
+
+  emit('place-audio', {
+    sourceUrl: selected.url,
+    sourceName: selected.name,
+    title: audioTitle.value.trim() || 'Nieuwe audio',
+    text: audioText.value.trim(),
+  })
+
+  // reset
+  audioTitle.value = ''
+  audioText.value = ''
+  selectedAudio.value = null
+  uploadedAudios.value = []
+  audioUrlInput.value = ''
+  mediaMode.value = 'chooser'
+  handleClosePanel()
 }
 
 const placePhoto = () => {
@@ -438,6 +646,193 @@ const placeCandle = () => {
       </section>
     </div>
 
+    <div v-else-if="panelType === 'media' && mediaMode === 'audio-source'" class="audio-flow">
+      <button type="button" class="back-link" @click="backToMediaChooser">← back</button>
+
+      <!-- Section 1: Upload from Device -->
+      <section class="photo-card-shell">
+        <div class="photo-flow-title">
+          <h3>Media - Audio</h3>
+          <p>Upload een audiobestand of kies een optie hieronder.</p>
+        </div>
+        <div class="audio-drop-area">
+          <svg class="audio-waveform" viewBox="0 0 150 40" preserveAspectRatio="xMidYMid meet">
+            <line x1="10" y1="20" x2="10" y2="15" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+            <line x1="20" y1="20" x2="20" y2="8" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+            <line x1="30" y1="20" x2="30" y2="12" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+            <line x1="40" y1="20" x2="40" y2="5" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+            <line x1="50" y1="20" x2="50" y2="10" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+            <line x1="60" y1="20" x2="60" y2="15" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+            <line x1="70" y1="20" x2="70" y2="8" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+            <line x1="80" y1="20" x2="80" y2="18" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+            <line x1="90" y1="20" x2="90" y2="10" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+            <line x1="100" y1="20" x2="100" y2="6" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+            <line x1="110" y1="20" x2="110" y2="12" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+            <line x1="120" y1="20" x2="120" y2="15" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+            <line x1="130" y1="20" x2="130" y2="10" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+            <line x1="140" y1="20" x2="140" y2="16" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+          </svg>
+          <p class="audio-formats">Ondersteunde bestanden: MP3, WAV, MP4 (max. 50mb)</p>
+        </div>
+
+        <input ref="audioFileInput" type="file" accept="audio/*" @change="handleAudioFileChange" />
+        <button type="button" class="family-action" @click="audioFileInput?.click()">Upload een audiobestand</button>
+
+        <div v-if="uploadedAudios.length" class="audio-selection-list">
+          <div v-for="audio in uploadedAudios" :key="audio.id" class="audio-list-item" :class="{ selected: selectedAudio?.id === audio.id }" @click="selectedAudio = audio">
+            <span class="audio-icon">🎧</span>
+            <span class="audio-name">{{ audio.name }}</span>
+            <span v-if="selectedAudio?.id === audio.id" class="checkmark">✓</span>
+          </div>
+        </div>
+      </section>
+
+      <!-- Section 2: URL Input -->
+      <section class="photo-card-shell">
+        <div class="photo-flow-title" style="margin-bottom: 10px;">
+          <h3 style="font-size: 20px; margin: 0; color: #1a1a1a;">Upload vanuit je playlist</h3>
+        </div>
+        <input v-model="audioUrlInput" type="text" placeholder="https://..." class="audio-url-input" />
+        <button type="button" class="family-action" @click="continueToAudioDetails">Volgende</button>
+      </section>
+
+      <!-- Section 3: Recording -->
+      <section class="photo-card-shell recording-shell">
+        <div class="photo-flow-title" style="margin-bottom: 14px;">
+          <h3 style="font-size: 20px; margin: 0; color: #1a1a1a;">Neem een kort berichtje op</h3>
+        </div>
+        <div class="recording-area">
+          <div class="microphone-icon">🎤</div>
+          <button 
+            type="button" 
+            class="recording-button" 
+            :class="{ recording: isRecording }"
+            @click="isRecording ? stopRecording() : startRecording()"
+          >
+            {{ isRecording ? 'Stop opnemen' : 'Start opname' }}
+          </button>
+          <p v-if="isRecording" class="recording-status">Opnemen...</p>
+        </div>
+      </section>
+    </div>
+
+    <div v-else-if="panelType === 'media' && mediaMode === 'video-source'" class="audio-flow">
+      <button type="button" class="back-link" @click="backToMediaChooser">← back</button>
+
+      <section class="photo-card-shell">
+        <div class="photo-flow-title">
+          <h3>Media - Video</h3>
+          <p>Upload een videobestand of kies een optie hieronder.</p>
+        </div>
+
+        <div class="audio-drop-area video-drop-area">
+          <svg class="audio-waveform" viewBox="0 0 150 40" preserveAspectRatio="xMidYMid meet">
+            <rect x="10" y="6" width="130" height="28" rx="8" fill="none" stroke="currentColor" stroke-width="2" />
+          </svg>
+          <p class="audio-formats">Ondersteunde bestanden: MP4, MOV, WEBM (max. 200mb)</p>
+        </div>
+
+        <input ref="videoFileInput" type="file" accept="video/*" @change="handleVideoFileChange" />
+        <button type="button" class="family-action" @click="videoFileInput?.click()">Upload een videobestand</button>
+
+        <div v-if="uploadedVideos.length" class="audio-selection-list">
+          <div v-for="video in uploadedVideos" :key="video.id" class="audio-list-item" :class="{ selected: selectedVideo?.id === video.id }" @click="selectedVideo = video">
+            <span class="audio-icon">🎥</span>
+            <span class="audio-name">{{ video.name }}</span>
+            <span v-if="selectedVideo?.id === video.id" class="checkmark">✓</span>
+          </div>
+        </div>
+      </section>
+
+      <section class="photo-card-shell">
+        <div class="photo-flow-title" style="margin-bottom: 10px;">
+          <h3 style="font-size: 20px; margin: 0; color: #1a1a1a;">Upload vanuit je playlist</h3>
+        </div>
+        <input v-model="videoUrlInput" type="text" placeholder="https://..." class="audio-url-input" />
+        <button type="button" class="family-action" @click="continueToVideoDetails">Volgende</button>
+      </section>
+
+      <section class="photo-card-shell recording-shell">
+        <div class="photo-flow-title" style="margin-bottom: 14px;">
+          <h3 style="font-size: 20px; margin: 0; color: #1a1a1a;">Neem een korte opname</h3>
+        </div>
+        <div class="recording-area">
+          <div class="microphone-icon">📹</div>
+          <button
+            type="button"
+            class="recording-button"
+            :class="{ recording: isVideoRecording }"
+            @click="isVideoRecording ? stopVideoRecording() : startVideoRecording()"
+          >
+            {{ isVideoRecording ? 'Stop opname' : 'Start opname' }}
+          </button>
+          <p v-if="isVideoRecording" class="recording-status">Opnemen...</p>
+        </div>
+      </section>
+    </div>
+
+    <div v-else-if="panelType === 'media' && mediaMode === 'video-details'" class="audio-flow">
+      <button type="button" class="back-link" @click="mediaMode = 'video-source'">← back</button>
+
+      <section class="photo-card-shell photo-details-shell">
+        <div class="photo-flow-title">
+          <h3>Media - Video</h3>
+          <p>Bekijk je selectie en voeg een begeleidend bericht toe.</p>
+        </div>
+
+        <div class="photo-preview-line">
+          <span class="preview-file-name">{{ selectedVideo?.name || 'Video' }}</span>
+        </div>
+
+        <div class="photo-preview-image" style="padding:12px;">
+          <video v-if="selectedVideo" :src="selectedVideo.url" controls style="width:100%"></video>
+        </div>
+
+        <label class="photo-field">
+          <span>Geef je video een titel</span>
+          <input v-model="videoTitle" type="text" placeholder="Schrijf hier je titel" />
+        </label>
+
+        <label class="photo-field">
+          <span>Voeg een korte tekst toe</span>
+          <textarea v-model="videoText" rows="4" placeholder="Schrijf hier je bericht"></textarea>
+        </label>
+
+        <button type="button" class="family-action" @click="placeVideo">Plaatsen</button>
+      </section>
+    </div>
+
+    <div v-else-if="panelType === 'media' && mediaMode === 'audio-details'" class="audio-flow">
+      <button type="button" class="back-link" @click="mediaMode = 'audio-source'">← back</button>
+
+      <section class="photo-card-shell photo-details-shell">
+        <div class="photo-flow-title">
+          <h3>Media - Audio</h3>
+          <p>Luister naar je selectie en voeg een begeleidend bericht toe.</p>
+        </div>
+
+        <div class="photo-preview-line">
+          <span class="preview-file-name">{{ selectedAudio?.name || 'Audio' }}</span>
+        </div>
+
+        <div class="photo-preview-image" style="padding:12px;">
+          <audio v-if="selectedAudio" :src="selectedAudio.url" controls style="width:100%"></audio>
+        </div>
+
+        <label class="photo-field">
+          <span>Geef je audio een titel</span>
+          <input v-model="audioTitle" type="text" placeholder="Schrijf hier je titel" />
+        </label>
+
+        <label class="photo-field">
+          <span>Voeg een korte tekst toe</span>
+          <textarea v-model="audioText" rows="4" placeholder="Schrijf hier je bericht"></textarea>
+        </label>
+
+        <button type="button" class="family-action" @click="placeAudio">Plaatsen</button>
+      </section>
+    </div>
+
     <div v-else-if="panelType === 'messages'" class="message-compose-panel">
       <section class="photo-card-shell">
         <div class="photo-flow-title">
@@ -590,16 +985,22 @@ const placeCandle = () => {
   line-height: 1;
 }
 
+
 .asset-grid,
 .message-list,
 .family-list,
-.photo-flow {
+.photo-flow,
+.audio-flow {
   display: flex;
   flex-direction: column;
   gap: 12px;
-  padding: 14px;
+  padding: 14px 18px; /* add horizontal padding for inner content */
   overflow-y: auto;
   flex: 1;
+}
+
+.audio-flow {
+  gap: 18px; /* a bit more space between stacked audio sections */
 }
 
 .asset-item {
@@ -676,7 +1077,7 @@ const placeCandle = () => {
   display: flex;
   flex-direction: column;
   gap: 14px;
-  padding: 18px;
+  padding: 22px; /* increased padding for more breathing room */
   border-radius: 24px;
   background: rgba(255, 255, 255, 0.28);
   color: #111111;
@@ -933,6 +1334,168 @@ const placeCandle = () => {
   padding: 14px;
   overflow-y: auto;
   flex: 1;
+}
+
+/* Audio Styles */
+.audio-drop-area {
+  border: 2px dashed rgba(18, 18, 18, 0.2);
+  border-radius: 16px;
+  padding: 20px;
+  background: rgba(255, 255, 255, 0.5);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+.audio-waveform {
+  width: 100%;
+  height: 50px;
+  color: rgba(125, 95, 161, 0.6);
+}
+
+.audio-formats {
+  margin: 0;
+  font-family: 'Outfit', 'Segoe UI', sans-serif;
+  font-size: 12px;
+  color: rgba(22, 18, 43, 0.7);
+  text-align: center;
+  line-height: 1.3;
+}
+
+.audio-url-input {
+  border: 1px solid rgba(18, 18, 18, 0.14);
+  border-radius: 12px;
+  padding: 12px;
+  font-family: 'Outfit', 'Segoe UI', sans-serif;
+  font-size: 14px;
+  background: rgba(255, 255, 255, 0.96);
+  margin-bottom: 12px;
+}
+
+.audio-url-input::placeholder {
+  color: rgba(22, 18, 43, 0.5);
+}
+
+.audio-upload-section,
+.audio-url-section {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.audio-selection-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.audio-list-item {
+  border: 1px solid rgba(18, 18, 18, 0.14);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.82);
+  padding: 10px 12px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  font-family: 'Outfit', 'Segoe UI', sans-serif;
+  font-size: 13px;
+  color: #1a1a1a;
+}
+
+.audio-list-item:hover {
+  background: rgba(255, 255, 255, 0.92);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+.audio-list-item.selected {
+  border-color: #5f4abf;
+  background: rgba(125, 95, 161, 0.08);
+  box-shadow: 0 0 0 2px rgba(95, 74, 191, 0.18);
+}
+
+.audio-icon {
+  font-size: 18px;
+}
+
+.audio-name {
+  flex: 1;
+  font-weight: 600;
+}
+
+.checkmark {
+  color: #7d5fa1;
+  font-weight: 700;
+}
+
+.recording-shell {
+  margin-top: 0;
+}
+
+.recording-area {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 14px;
+  padding: 18px 12px;
+  background: rgba(255, 255, 255, 0.4);
+  border-radius: 16px;
+}
+
+.microphone-icon {
+  font-size: 48px;
+}
+
+.recording-button {
+  border: none;
+  border-radius: 12px;
+  background: #5f5f5f;
+  color: #ffffff;
+  font-family: 'Outfit', 'Segoe UI', sans-serif;
+  font-size: 14px;
+  font-weight: 700;
+  padding: 12px 20px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  width: 100%;
+}
+
+.recording-button:hover {
+  background: #4a4a4a;
+  transform: scale(1.02);
+}
+
+.recording-button.recording {
+  background: rgba(255, 100, 100, 0.2);
+  color: #d32f2f;
+  animation: pulse 1.5s infinite;
+}
+
+.recording-status {
+  margin: 0;
+  font-family: 'Outfit', 'Segoe UI', sans-serif;
+  font-size: 12px;
+  color: rgba(22, 18, 43, 0.7);
+  font-weight: 600;
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.6; }
+}
+
+/* Hide native audio file input UI (we use the button) */
+input[type="file"][accept*="audio"] {
+  display: none;
+}
+
+/* Add spacing between stacked photo-card-shell sections */
+.photo-card-shell + .photo-card-shell {
+  margin-top: 12px;
 }
 
 @media (max-width: 960px) {

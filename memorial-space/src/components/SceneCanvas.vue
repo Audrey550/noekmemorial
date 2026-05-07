@@ -60,6 +60,58 @@ const handlePlacePhoto = (photoData) => {
   placePhotoInRoom(photoData)
 }
 
+const handlePlaceAudio = (audioData) => {
+  if (!scene || !room) return
+  placeAudioInRoom(audioData)
+}
+
+const createAudioCard = (audioData) => {
+  const group = new THREE.Group()
+  group.userData.audioData = audioData
+
+  const shellMaterial = new THREE.MeshStandardMaterial({ color: '#ffffff', roughness: 0.95 })
+  const shell = new THREE.Mesh(new THREE.BoxGeometry(1.6, 0.9, 0.06), shellMaterial)
+  shell.castShadow = true
+  shell.receiveShadow = true
+  group.add(shell)
+
+  const waveMaterial = new THREE.MeshStandardMaterial({ color: '#e6e6e6', roughness: 0.9 })
+  const wave = new THREE.Mesh(new THREE.PlaneGeometry(1.4, 0.5), waveMaterial)
+  wave.position.z = 0.035
+  wave.position.y = 0.05
+  group.add(wave)
+
+  const captionBlock = new THREE.Mesh(
+    new THREE.BoxGeometry(1.3, 0.18, 0.03),
+    new THREE.MeshStandardMaterial({ color: '#f7f2fa', roughness: 0.55 }),
+  )
+  captionBlock.position.set(0, -0.36, 0.035)
+  group.add(captionBlock)
+
+  group.scale.set(1, 1, 1)
+  group.position.y = 1.05
+  group.rotation.y = -0.4
+
+  return group
+}
+
+const placeAudioInRoom = (audioData) => {
+  if (!room) return
+  const audioCard = createAudioCard(audioData)
+  audioCard.position.set(1.2, 0, -1.6)
+  room.add(audioCard)
+
+  sceneObjects.value.push({
+    id: Date.now(),
+    assetId: 'audio',
+    object: audioCard,
+    audioData,
+    position: audioCard.position.clone(),
+    rotation: audioCard.rotation.clone(),
+    scale: audioCard.scale.clone(),
+  })
+}
+
 // Function to add an object to the scene
 const addObjectToScene = async (assetId) => {
   const asset = availableAssets.find(a => a.id === assetId)
@@ -149,9 +201,9 @@ const getPhotoDataFromObject = (object) => {
   let currentObject = object
 
   while (currentObject) {
-    if (currentObject.userData?.photoData) {
-      return currentObject.userData.photoData
-    }
+    if (currentObject.userData?.photoData) return currentObject.userData.photoData
+    if (currentObject.userData?.audioData) return currentObject.userData.audioData
+    if (currentObject.userData?.messageData) return currentObject.userData.messageData
 
     currentObject = currentObject.parent
   }
@@ -746,6 +798,7 @@ onBeforeUnmount(() => {
         @toggle-floor="toggleFloorVisibility"
         @close-panel="closeQuickPanel"
         @place-photo="handlePlacePhoto"
+        @place-audio="handlePlaceAudio"
         @place-message="handlePlaceMessage"
         @place-candle="handlePlaceCandle"
       />

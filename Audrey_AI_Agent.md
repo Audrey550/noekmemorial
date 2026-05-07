@@ -155,3 +155,18 @@ This is the running log for the work we do in this project. I will keep it updat
 - In progress: mark the status clearly and add a short note.
 - Completed: update the status to done and note any useful follow-up.
 - Blocked: record the blocker and the next action.
+
+## Recent Updates (2026-05-07)
+
+- **2026-05-07:** Implemented the initial Audio workflow in the Media panel:
+  - Added upload (device), playlist URL input, and browser recording flows in `AssetPanel.vue`.
+  - Emitted `place-audio` and handled placement in `SceneCanvas.vue` with an in-scene audio card placeholder.
+  - Fixed a duplicate function bug that caused a build error and corrected CSS to enable proper scrolling and spacing.
+  - Polished visuals: waveform box, spacing between sections, URL placeholder, and `Start opname` button label.
+
+- **2026-05-07 (video):** Started the Video workflow mirroring Audio:
+  - Added upload, playlist URL, and camera recording UI in `AssetPanel.vue`.
+  - Added `place-video` emit and a `video-details` preview with an inline `<video>` player.
+  - Marked the Video UI task complete in the TODO list and started work on recording support.
+
+If you want, I can continue by wiring playback for placed audio cards, adding deletion/posting states, or persisting uploads to Supabase.
