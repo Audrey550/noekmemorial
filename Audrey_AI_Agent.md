@@ -170,3 +170,112 @@ This is the running log for the work we do in this project. I will keep it updat
   - Marked the Video UI task complete in the TODO list and started work on recording support.
 
 If you want, I can continue by wiring playback for placed audio cards, adding deletion/posting states, or persisting uploads to Supabase.
+
+## Session Snapshot (2026-05-12)
+
+### Session Start Review
+- **Previous work status:** Week 1 MVP near completion, Foto wizard in progress, Audio complete, Video workflow started
+- **Time since last session:** 6 days (May 6 → May 12)
+- **Current focus:** Complete Week 1 media workflows (Foto/Audio/Video), prepare Week 2 object interaction features
+
+### Today's Objectives
+1. Review current state of Foto, Audio, and Video implementations
+2. Complete Foto upload/gallery wizard fully
+3. Finish Video workflow integration
+4. Test all three media types in scene
+5. Verify scene state tracking for placed media objects
+6. Begin planning Week 2 object selection/transform controls
+
+### What Was Completed Today
+
+- Moved the project into Week 2 focus after confirming the media workflows were already complete.
+- Added click-to-select scene object state in `SceneCanvas.vue` using the existing room raycasting path.
+- Added a selection inspector panel with object type/name and a delete action.
+- Normalized placed scene items so they all carry a shared scene object id for selection lookup.
+- Added Delete/Backspace removal for the currently selected object.
+- Added reliable selection targeting: raycasting now checks only placed scene objects (not room/furniture meshes).
+- Added auto-selection after placement so the new object is instantly active in the inspector.
+- Added basic transform controls in the inspector: move (forward/back/left/right) and rotate (left/right).
+- Hardened keyboard delete handling to avoid deleting while typing in input/textarea fields.
+- Verified in browser: placing a photo now opens the selection inspector automatically and delete works from the panel.
+
+### Continuation: Scale Controls (May 12 - continued)
+
+- **Objective:** Add scale (shrink/grow) controls to match the placement → positioning → rotation → scaling workflow
+- **Implementation:**
+  - Added `scaleStep = 0.1` constant for consistent incremental scaling
+  - Updated `applyTransformToSelectedObject()` to accept `scaleAdjust` parameter
+  - Scale changes use uniform scaling (all axes equally), with a minimum floor of 0.1 to prevent zero/negative values
+  - Scale is stored in the scene object record for future save/load functionality
+  - Added "Verkleinen" (Shrink) and "Vergroten" (Enlarge) buttons to the selection inspector panel
+- **Testing:** Verified in browser - both scale buttons work:
+  - Clicked "Vergroten" 3x → photo frame visibly enlarged
+  - Clicked "Verkleinen" 2x → photo frame visibly shrank back down
+  - Scale adjustments apply immediately and update the scene object record
+- **Result:** Users can now place an object, position it (forward/back/left/right), rotate it (left/right), and scale it (shrink/grow) - complete spatial control
+
+### UI Refinement: Icon-Based Controls (May 12 - continued)
+
+- **Objective:** Replace text-based transform buttons with symbol-based icon buttons for a cleaner, more intuitive interface
+- **Implementation:**
+  - Replaced all transform button text labels with intuitive symbols:
+    - **Move:** Arrow icons (↑↓←→) in a 4-button grid layout
+    - **Rotate:** Curved arrows (↶↷) in a 2-button grid layout
+    - **Scale:** Plus/minus circles (⊕⊖) in a 2-button grid layout
+  - Organized controls into clearly labeled groups ("MOVE", "ROTATE", "SCALE") for visual hierarchy
+  - Added hover effects (scale transform, background color change) for better tactile feedback
+  - Removed text object labels ("Test Photo", "Type: photo") - visual highlighting via selection box is sufficient
+  - Removed old text-based button styling, keeping delete button as primary action
+- **Result:** Selection panel is now compact, visual, and immediately understandable without language barriers
+- **Verified:** All icon buttons work correctly, delete button functional, tested rotation transform
+
+### Vertical Movement Controls (May 12 - continued)
+
+- **Objective:** Add up/down controls so objects don't sit halfway in the floor
+- **Implementation:**
+  - Added `moveY` parameter to `applyTransformToSelectedObject()` function
+  - Added ⬆ (up) and ⬇ (down) icon buttons to Move section
+  - Adjusted move-grid from 4 columns to 3 columns to accommodate 6 buttons in 2 rows:
+    - Row 1: ↑ (forward), ↓ (backward), ← (left)
+    - Row 2: → (right), ⬆ (up), ⬇ (down)
+  - Vertical movement uses same `transformStep` (0.2 units) for consistent increments
+- **Testing:** Verified in browser:
+  - Clicked ⬆ button 3x → photo frame visibly rose above floor
+  - Clicked ⬇ button 1x → photo frame descended slightly
+  - Full vertical control achieved, no floor clipping
+- **Result:** Complete 6-directional spatial control (X, Y, Z axes) plus rotation and scale
+
+### UI Polish: Icon + Label Button Design (May 12 - continued)
+
+- **Objective:** Make control buttons immediately understandable by combining visual symbols with descriptive text labels
+- **Implementation:**
+  - Updated all 10 control buttons to display both icon and label:
+    - **Move:** ↑ Forward, ↓ Back, ← Left, → Right, ⬆ Up, ⬇ Down
+    - **Rotate:** ↶ Left, ↷ Right
+    - **Scale:** ⊖ Smaller, ⊕ Larger
+  - Restructured button layout to stack icon on top of label with flexbox `flex-direction: column`
+  - Updated button sizing:
+    - Increased min-height to 60px to accommodate both icon and label
+    - Adjusted font sizes: icon at 22px, label at 10px for clear hierarchy
+  - Refined button styling: 4px gap between icon and label, uppercase styling removed from labels for readability
+- **Testing:** All buttons functional with new design, hover/active states working, clear visual and textual affordances
+- **Result:** Interface now perfectly balances visual design (icon symbols) with discoverability (text labels) - no guessing required
+
+### Panel Accessibility Fix: Scrollable Selection Inspector (May 12 - continued)
+
+- **Issue:** Scale buttons were not visible/accessible at the bottom of the selection panel
+- **Solution:** Made the selection panel scrollable with improved layout
+  - Increased panel width from 280px → **310px** for better button spacing
+  - Added `max-height: 70vh` constraint with `overflow-y: auto` for vertical scrolling
+  - Scrollbar appears naturally on the right side when content exceeds viewport
+  - All 10 control buttons now accessible via smooth scrolling
+- **Result:** Complete access to all controls regardless of screen height - Move, Rotate, Scale, and Delete buttons all reachable
+- **User Experience:** Natural scrolling behavior, smooth transitions, no loss of functionality
+- Validated the touched file with a clean error check.
+
+### Current Focus
+- **Week 2 has started**: object selection, selection UI, delete handling, and basic move/rotate controls are active.
+- Next slice: optional gizmo-style dragging and richer inspector properties.
+
+### Tracker Update Note
+- `Audrey_AI_Agent.md` was updated during this session to reflect the new Week 2 focus.

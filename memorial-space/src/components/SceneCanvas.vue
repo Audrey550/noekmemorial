@@ -14,6 +14,13 @@ const showFloor = ref(true)
 const showProfileMenu = ref(false)
 const hoveredPhoto = ref(null)
 const hoveredPhotoPosition = ref({ x: 0, y: 0 })
+const selectedSceneObjectId = ref(null)
+const selectedSceneObject = ref(null)
+const selectedSceneObjectType = ref('')
+const selectedSceneObjectLabel = ref('')
+const transformStep = 0.2
+const rotateStep = Math.PI / 12
+const scaleStep = 0.1
 const assetModels = ref([])
 
 let animationFrameId = 0
@@ -26,6 +33,8 @@ let camera = null
 let floorMesh = null
 let roomShadow = null
 let profileMenuElement = null
+let selectionHelper = null
+let sceneObjectIdCounter = 1
 let gltfLoader = new GLTFLoader()
 let photoTextureLoader = new THREE.TextureLoader()
 let raycaster = new THREE.Raycaster()
@@ -65,6 +74,31 @@ const handlePlaceAudio = (audioData) => {
   placeAudioInRoom(audioData)
 }
 
+const handlePlaceVideo = (videoData) => {
+  if (!scene || !room) return
+  placeVideoInRoom(videoData)
+}
+
+const createSceneObjectRecord = (object, assetId, payload = {}) => {
+  const id = sceneObjectIdCounter++
+  object.userData.sceneObjectId = id
+
+  const record = {
+    id,
+    assetId,
+    object,
+    position: object.position.clone(),
+    rotation: object.rotation.clone(),
+    scale: object.scale.clone(),
+    ...payload,
+  }
+
+  sceneObjects.value.push(record)
+  selectSceneObject(record)
+
+  return id
+}
+
 const createAudioCard = (audioData) => {
   const group = new THREE.Group()
   group.userData.audioData = audioData
@@ -101,15 +135,45 @@ const placeAudioInRoom = (audioData) => {
   audioCard.position.set(1.2, 0, -1.6)
   room.add(audioCard)
 
-  sceneObjects.value.push({
-    id: Date.now(),
-    assetId: 'audio',
-    object: audioCard,
-    audioData,
-    position: audioCard.position.clone(),
-    rotation: audioCard.rotation.clone(),
-    scale: audioCard.scale.clone(),
-  })
+  createSceneObjectRecord(audioCard, 'audio', { audioData })
+}
+
+const createVideoCard = (videoData) => {
+  const group = new THREE.Group()
+  group.userData.videoData = videoData
+
+  const shellMaterial = new THREE.MeshStandardMaterial({ color: '#ffffff', roughness: 0.95 })
+  const shell = new THREE.Mesh(new THREE.BoxGeometry(1.8, 1.2, 0.06), shellMaterial)
+  shell.castShadow = true
+  shell.receiveShadow = true
+  group.add(shell)
+
+  const videoPlateMaterial = new THREE.MeshStandardMaterial({ color: '#000000', roughness: 0.9 })
+  const videoPlate = new THREE.Mesh(new THREE.BoxGeometry(1.64, 1.04, 0.04), videoPlateMaterial)
+  videoPlate.position.z = 0.035
+  group.add(videoPlate)
+
+  const captionBlock = new THREE.Mesh(
+    new THREE.BoxGeometry(1.5, 0.18, 0.03),
+    new THREE.MeshStandardMaterial({ color: '#f7f2fa', roughness: 0.55 }),
+  )
+  captionBlock.position.set(0, -0.5, 0.035)
+  group.add(captionBlock)
+
+  group.scale.set(1, 1, 1)
+  group.position.y = 1.2
+  group.rotation.y = -0.35
+
+  return group
+}
+
+const placeVideoInRoom = (videoData) => {
+  if (!room) return
+  const videoCard = createVideoCard(videoData)
+  videoCard.position.set(-1.5, 0, -1.8)
+  room.add(videoCard)
+
+  createSceneObjectRecord(videoCard, 'video', { videoData })
 }
 
 // Function to add an object to the scene
@@ -142,15 +206,8 @@ const addObjectToScene = async (assetId) => {
   })
   
   room.add(model)
-  
-  sceneObjects.value.push({
-    id: Date.now(),
-    assetId,
-    object: model,
-    position: model.position.clone(),
-    rotation: model.rotation.clone(),
-    scale: model.scale.clone(),
-  })
+
+  createSceneObjectRecord(model, assetId)
 }
 
 const toggleFloorVisibility = () => {
@@ -193,8 +250,128 @@ const handleDocumentKeydown = (event) => {
   }
 }
 
+const handleWindowKeydown = (event) => {
+  const target = event.target
+  const isTypingTarget = target instanceof HTMLElement
+    && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable)
+
+  if (isTypingTarget) {
+    return
+  }
+
+  if (event.key === 'Delete' || event.key === 'Backspace') {
+    removeSelectedSceneObject()
+  }
+}
+
 const clearHoveredPhoto = () => {
   hoveredPhoto.value = null
+}
+
+const clearSelectionHelper = () => {
+  if (!selectionHelper || !room) {
+    selectionHelper = null
+    return
+  }
+
+  room.remove(selectionHelper)
+  selectionHelper.geometry.dispose()
+  selectionHelper.material.dispose()
+  selectionHelper = null
+}
+
+const clearSceneSelection = () => {
+  selectedSceneObjectId.value = null
+  selectedSceneObject.value = null
+  selectedSceneObjectType.value = ''
+  selectedSceneObjectLabel.value = ''
+  clearSelectionHelper()
+}
+
+const getSelectableRootObjects = () => {
+  return sceneObjects.value
+    .map(entry => entry.object)
+    .filter(Boolean)
+}
+
+const findSceneObjectRecord = (object) => {
+  let currentObject = object
+
+  while (currentObject) {
+    const sceneObjectId = currentObject.userData?.sceneObjectId
+
+    if (sceneObjectId) {
+      return sceneObjects.value.find(entry => entry.id === sceneObjectId) || null
+    }
+
+    currentObject = currentObject.parent
+  }
+
+  return null
+}
+
+const updateSelectionHelper = (object) => {
+  clearSelectionHelper()
+
+  if (!room) {
+    return
+  }
+
+  selectionHelper = new THREE.BoxHelper(object, '#f2afc7')
+  room.add(selectionHelper)
+}
+
+const selectSceneObject = (record) => {
+  if (!record) {
+    clearSceneSelection()
+    return
+  }
+
+  selectedSceneObjectId.value = record.id
+  selectedSceneObject.value = record
+  selectedSceneObjectType.value = record.assetId
+  selectedSceneObjectLabel.value = record.photoData?.title
+    || record.audioData?.title
+    || record.videoData?.title
+    || record.candleData?.name
+    || record.messageData?.message
+    || record.assetId
+  updateSelectionHelper(record.object)
+}
+
+const removeSelectedSceneObject = () => {
+  const record = selectedSceneObject.value
+
+  if (!record || !room) {
+    return
+  }
+
+  room.remove(record.object)
+  sceneObjects.value = sceneObjects.value.filter(entry => entry.id !== record.id)
+  clearHoveredPhoto()
+  clearSceneSelection()
+}
+
+const applyTransformToSelectedObject = ({ moveX = 0, moveY = 0, moveZ = 0, rotateY = 0, scaleAdjust = 0 }) => {
+  const record = selectedSceneObject.value
+
+  if (!record?.object) {
+    return
+  }
+
+  record.object.position.x += moveX
+  record.object.position.y += moveY
+  record.object.position.z += moveZ
+  record.object.rotation.y += rotateY
+
+  if (scaleAdjust !== 0) {
+    const newScale = Math.max(0.1, record.object.scale.x + scaleAdjust)
+    record.object.scale.set(newScale, newScale, newScale)
+  }
+
+  record.position = record.object.position.clone()
+  record.rotation = record.object.rotation.clone()
+  record.scale = record.object.scale.clone()
 }
 
 const getPhotoDataFromObject = (object) => {
@@ -203,6 +380,7 @@ const getPhotoDataFromObject = (object) => {
   while (currentObject) {
     if (currentObject.userData?.photoData) return currentObject.userData.photoData
     if (currentObject.userData?.audioData) return currentObject.userData.audioData
+    if (currentObject.userData?.videoData) return currentObject.userData.videoData
     if (currentObject.userData?.messageData) return currentObject.userData.messageData
 
     currentObject = currentObject.parent
@@ -234,6 +412,34 @@ const handleCanvasPointerMove = (event) => {
     x: event.clientX - rect.left + 16,
     y: event.clientY - rect.top + 16,
   }
+}
+
+const handleCanvasClick = (event) => {
+  if (!renderer || !camera || !room) {
+    return
+  }
+
+  const rect = renderer.domElement.getBoundingClientRect()
+  pointer.x = ((event.clientX - rect.left) / rect.width) * 2 - 1
+  pointer.y = -(((event.clientY - rect.top) / rect.height) * 2 - 1)
+
+  const selectableRoots = getSelectableRootObjects()
+
+  if (!selectableRoots.length) {
+    clearSceneSelection()
+    return
+  }
+
+  raycaster.setFromCamera(pointer, camera)
+  const intersections = raycaster.intersectObjects(selectableRoots, true)
+  const selectedIntersection = intersections.find(intersection => findSceneObjectRecord(intersection.object))
+
+  if (!selectedIntersection) {
+    clearSceneSelection()
+    return
+  }
+
+  selectSceneObject(findSceneObjectRecord(selectedIntersection.object))
 }
 
 const handleCanvasPointerLeave = () => {
@@ -364,15 +570,7 @@ const placePhotoInRoom = (photoData) => {
   photoCard.position.set(1.55, 0, -2.2)
   room.add(photoCard)
 
-  sceneObjects.value.push({
-    id: Date.now(),
-    assetId: 'photo',
-    object: photoCard,
-    photoData,
-    position: photoCard.position.clone(),
-    rotation: photoCard.rotation.clone(),
-    scale: photoCard.scale.clone(),
-  })
+  createSceneObjectRecord(photoCard, 'photo', { photoData })
 }
 
 const handlePlaceMessage = (messageData) => {
@@ -385,15 +583,7 @@ const handlePlaceMessage = (messageData) => {
   messageGroup.position.set(0, 0.5, 0)
   room.add(messageGroup)
 
-  sceneObjects.value.push({
-    id: Date.now(),
-    assetId: 'message',
-    object: messageGroup,
-    messageData,
-    position: messageGroup.position.clone(),
-    rotation: messageGroup.rotation.clone(),
-    scale: messageGroup.scale.clone(),
-  })
+  createSceneObjectRecord(messageGroup, 'message', { messageData })
 }
 
 const handlePlaceCandle = (candleData) => {
@@ -444,15 +634,7 @@ const handlePlaceCandle = (candleData) => {
   candleGroup.position.set(Math.random() * 2 - 1, 0.05, Math.random() * 2 - 1)
   room.add(candleGroup)
 
-  sceneObjects.value.push({
-    id: Date.now(),
-    assetId: 'candle',
-    object: candleGroup,
-    candleData,
-    position: candleGroup.position.clone(),
-    rotation: candleGroup.rotation.clone(),
-    scale: candleGroup.scale.clone(),
-  })
+  createSceneObjectRecord(candleGroup, 'candle', { candleData })
 }
 
 onMounted(() => {
@@ -692,12 +874,17 @@ onMounted(() => {
 
   document.addEventListener('click', handleDocumentClick)
   document.addEventListener('keydown', handleDocumentKeydown)
+  window.addEventListener('keydown', handleWindowKeydown)
   renderer.domElement.addEventListener('pointermove', handleCanvasPointerMove)
+  renderer.domElement.addEventListener('click', handleCanvasClick)
   renderer.domElement.addEventListener('pointerleave', handleCanvasPointerLeave)
 
   const animate = () => {
     animationFrameId = window.requestAnimationFrame(animate)
     lightPulse()
+    if (selectionHelper) {
+      selectionHelper.update()
+    }
     controls.update()
     renderer.render(scene, camera)
   }
@@ -709,10 +896,12 @@ onBeforeUnmount(() => {
   window.cancelAnimationFrame(animationFrameId)
   if (renderer) {
     renderer.domElement.removeEventListener('pointermove', handleCanvasPointerMove)
+    renderer.domElement.removeEventListener('click', handleCanvasClick)
     renderer.domElement.removeEventListener('pointerleave', handleCanvasPointerLeave)
   }
   document.removeEventListener('click', handleDocumentClick)
   document.removeEventListener('keydown', handleDocumentKeydown)
+  window.removeEventListener('keydown', handleWindowKeydown)
 
   if (resizeObserver) {
     resizeObserver.disconnect()
@@ -728,6 +917,8 @@ onBeforeUnmount(() => {
     renderer.dispose()
     renderer = null
   }
+
+  clearSelectionHelper()
 })
 </script>
 
@@ -799,6 +990,7 @@ onBeforeUnmount(() => {
         @close-panel="closeQuickPanel"
         @place-photo="handlePlacePhoto"
         @place-audio="handlePlaceAudio"
+        @place-video="handlePlaceVideo"
         @place-message="handlePlaceMessage"
         @place-candle="handlePlaceCandle"
       />
@@ -814,9 +1006,82 @@ onBeforeUnmount(() => {
         <strong>{{ hoveredPhoto.title }}</strong>
         <p>{{ hoveredPhoto.text || 'Geen extra tekst toegevoegd.' }}</p>
       </div>
+
+      <aside v-if="selectedSceneObject" class="selection-panel">
+        <div class="selection-panel-header">
+          <h3>Geselecteerd object</h3>
+          <button type="button" class="selection-close-button" @click="clearSceneSelection">×</button>
+        </div>
+
+        <div class="selection-controls">
+          <div class="control-group">
+            <div class="control-label">Move</div>
+            <div class="control-grid move-grid">
+              <button type="button" class="selection-icon-button" title="Forward" @click="applyTransformToSelectedObject({ moveZ: -transformStep })">
+                <span class="icon">↑</span>
+                <span class="label">Forward</span>
+              </button>
+              <button type="button" class="selection-icon-button" title="Backward" @click="applyTransformToSelectedObject({ moveZ: transformStep })">
+                <span class="icon">↓</span>
+                <span class="label">Back</span>
+              </button>
+              <button type="button" class="selection-icon-button" title="Left" @click="applyTransformToSelectedObject({ moveX: -transformStep })">
+                <span class="icon">←</span>
+                <span class="label">Left</span>
+              </button>
+              <button type="button" class="selection-icon-button" title="Right" @click="applyTransformToSelectedObject({ moveX: transformStep })">
+                <span class="icon">→</span>
+                <span class="label">Right</span>
+              </button>
+              <button type="button" class="selection-icon-button" title="Up" @click="applyTransformToSelectedObject({ moveY: transformStep })">
+                <span class="icon">⬆</span>
+                <span class="label">Up</span>
+              </button>
+              <button type="button" class="selection-icon-button" title="Down" @click="applyTransformToSelectedObject({ moveY: -transformStep })">
+                <span class="icon">⬇</span>
+                <span class="label">Down</span>
+              </button>
+            </div>
+          </div>
+
+          <div class="control-group">
+            <div class="control-label">Rotate</div>
+            <div class="control-grid rotate-grid">
+              <button type="button" class="selection-icon-button" title="Rotate Left" @click="applyTransformToSelectedObject({ rotateY: -rotateStep })">
+                <span class="icon">↶</span>
+                <span class="label">Left</span>
+              </button>
+              <button type="button" class="selection-icon-button" title="Rotate Right" @click="applyTransformToSelectedObject({ rotateY: rotateStep })">
+                <span class="icon">↷</span>
+                <span class="label">Right</span>
+              </button>
+            </div>
+          </div>
+
+          <div class="control-group">
+            <div class="control-label">Scale</div>
+            <div class="control-grid scale-grid">
+              <button type="button" class="selection-icon-button" title="Shrink" @click="applyTransformToSelectedObject({ scaleAdjust: -scaleStep })">
+                <span class="icon">⊖</span>
+                <span class="label">Smaller</span>
+              </button>
+              <button type="button" class="selection-icon-button" title="Enlarge" @click="applyTransformToSelectedObject({ scaleAdjust: scaleStep })">
+                <span class="icon">⊕</span>
+                <span class="label">Larger</span>
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <div class="selection-actions">
+          <button type="button" class="selection-delete-button" @click="removeSelectedSceneObject">
+            Verwijderen
+          </button>
+        </div>
+      </aside>
     </section>
   </main>
-</template>"}}]}]}
+</template>
 
 <style scoped>
 .editor-shell {
@@ -1031,6 +1296,164 @@ onBeforeUnmount(() => {
   font-size: 12px;
   line-height: 1.45;
   color: #48415f;
+}
+
+.selection-panel {
+  position: absolute;
+  right: 20px;
+  top: 120px;
+  width: 310px;
+  max-height: 70vh;
+  padding: 16px;
+  border-radius: 18px;
+  border: 1px solid rgba(54, 42, 92, 0.2);
+  background: rgba(255, 255, 255, 0.92);
+  box-shadow: 0 14px 28px rgba(0, 0, 0, 0.14);
+  backdrop-filter: blur(12px);
+  overflow-y: auto;
+}
+
+.selection-panel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.selection-panel-header h3 {
+  margin: 0;
+  font-family: 'Outfit', 'Segoe UI', sans-serif;
+  font-size: 16px;
+  font-weight: 700;
+  color: #1a1a1a;
+}
+
+.selection-close-button {
+  width: 30px;
+  height: 30px;
+  border: none;
+  border-radius: 999px;
+  background: rgba(242, 175, 199, 0.25);
+  color: #1a1a1a;
+  font-size: 18px;
+}
+
+.selection-object-name,
+.selection-object-type {
+  margin: 10px 0 0;
+  font-family: 'Outfit', 'Segoe UI', sans-serif;
+  font-size: 14px;
+  color: #2a2a2a;
+}
+
+.selection-actions {
+  display: flex;
+  gap: 10px;
+  margin-top: 14px;
+}
+
+.selection-delete-button {
+  border: none;
+  border-radius: 12px;
+  background: #1f1a3b;
+  color: #ffffff;
+  font-family: 'Outfit', 'Segoe UI', sans-serif;
+  font-size: 14px;
+  font-weight: 700;
+  padding: 10px 14px;
+  width: 100%;
+}
+
+.selection-controls {
+  margin-top: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.control-group {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.control-label {
+  font-family: 'Outfit', 'Segoe UI', sans-serif;
+  font-size: 12px;
+  font-weight: 600;
+  color: #666666;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.control-grid {
+  display: grid;
+  gap: 8px;
+}
+
+.move-grid {
+  grid-template-columns: repeat(3, 1fr);
+}
+
+.rotate-grid {
+  grid-template-columns: repeat(2, 1fr);
+}
+
+.scale-grid {
+  grid-template-columns: repeat(2, 1fr);
+}
+
+.selection-icon-button {
+  border: 1px solid rgba(31, 26, 59, 0.2);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.95);
+  color: #1f1a3b;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  aspect-ratio: 1;
+  min-height: 60px;
+  padding: 8px;
+}
+
+.selection-icon-button .icon {
+  font-size: 22px;
+  font-weight: 600;
+  line-height: 1;
+}
+
+.selection-icon-button .label {
+  font-family: 'Outfit', 'Segoe UI', sans-serif;
+  font-size: 10px;
+  font-weight: 600;
+  line-height: 1.2;
+  text-align: center;
+  letter-spacing: 0.03em;
+}
+
+.selection-icon-button:hover {
+  background: rgba(242, 175, 199, 0.2);
+  border-color: rgba(242, 175, 199, 0.5);
+  transform: scale(1.05);
+}
+
+.selection-icon-button:active {
+  transform: scale(0.95);
+}
+
+.selection-transform-button {
+  border: 1px solid rgba(31, 26, 59, 0.2);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.9);
+  color: #1f1a3b;
+  font-family: 'Outfit', 'Segoe UI', sans-serif;
+  font-size: 13px;
+  font-weight: 600;
+  padding: 9px 10px;
 }
 
 @media (max-width: 960px) {
