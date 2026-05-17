@@ -1,3 +1,28 @@
+## Session Snapshot (2026-05-17)
+### Recap — What we achieved last time
+- Week 1 MVP and media workflows: GLTFLoader/asset panel, object placement, Audio flow completed, Video flow started.
+- Week 2 core interaction slice implemented: click-to-select raycasting, selection inspector, delete handling.
+- Transform controls: move (6 directions), rotate, uniform scale, and UI polish (icons, layout, accessibility).
+- Scene object tracking and auto-selection after placement are active and tested.
+### Remaining / Open items
+- Persistence: save/load scene (localStorage + Supabase integration plan).
+- Gizmo-style direct drag/translate/rotate controls (visual handles) not yet added.
+- Clipboard and keyboard UX: copy/paste, additional shortcuts, and keybinding polish.
+- Foto & Video flows: finish any remaining Foto upload/gallery edge cases and ensure robust video recording/playback preview.
+- Playback for placed media (audio/video) and upload persistence to Supabase if desired.
+- Final polish and edge-case testing before stakeholder demo.
+### Focus — Today (2026-05-17)
+- Stabilize the Foto upload/gallery wizard and complete placement flow.
+- Ensure placed audio/video playback works reliably and that video recording previews correctly.
+- Implement a quick local `save/load` using `localStorage` for scene JSON (minimal API for the demo).
+- Run a short browser test: place 3 objects, transform them, save, reload, verify state.
+### Focus — Tomorrow (before feedback call)
+- Prepare a concise 2–3 minute demo script: place a photo, add audio, move/scale, save/load.
+- Freeze UI changes; fix any critical bugs found during today's tests.
+- Create 3 targeted feedback questions for the teacher (persistence approach, transform UX, Supabase integration priorities).
+- If time permits: add Delete key binding and a basic copy/paste workflow for objects.
+### Tracker Update
+- 2026-05-17: Appended session snapshot, priorities for today/tomorrow, and the short action checklist above. Confirming `Audrey_AI_Agent.md` updated.
 # Audrey AI Agent Tracker
 
 This is the running log for the work we do in this project. I will keep it updated as tasks are requested, completed, or deferred.
@@ -279,3 +304,85 @@ If you want, I can continue by wiring playback for placed audio cards, adding de
 
 ### Tracker Update Note
 - `Audrey_AI_Agent.md` was updated during this session to reflect the new Week 2 focus.
+## Session Progress Update (2026-05-17 â€” Active)
+
+### Work Completed Today
+
+**localStorage Save/Load Implementation (DONE & TESTED):**
+- Implemented serializeSceneState() function: converts Three.js scene objects to plain JSON
+  - Captures: id, assetId, position, rotation, scale, and all metadata (photoData, audioData, videoData, etc.)
+- Implemented deserializeSceneState() function: reconstructs 3D objects from JSON
+  - Handles: photo cards, audio cards, video cards, messages, 3D assets (candle/flower/frame)
+  - Preserves exact transform state, auto-selects first object after load
+- Added saveSceneToStorage() and loadSceneFromStorage() functions
+- Added Save (ðŸ’¾) and Load (ðŸ“‚) buttons to top navbar
+- **Live testing completed:**
+  1. Placed "Sunset Memory" photo in scene with all transforms
+  2. Clicked Save â†’ alert confirmed success
+  3. Refreshed page â†’ scene memory cleared
+  4. Clicked Load â†’ alert confirmed success
+  5. Photo restored with correct position, rotation, scale
+  6. Selection inspector re-opened with full control available
+- **Result:** Full round-trip persistence working perfectly
+- Ready for demo tomorrow
+
+**Current Status:**
+- localStorage provides stable save/load for the demo and teacher feedback
+- Next: Optional Supabase integration (can happen after feedback call if time)
+- App is now feature-complete for Week 1 + Week 2 MVP
+
+### Remaining for Tomorrow (Before Feedback Call)
+
+1. Demo prep: 2â€“3 minute script (place photo â†’ add audio â†’ transform â†’ save/load)
+2. Polish: Fix any edge cases found in live testing
+3. Feedback questions: Prepare 3â€“5 questions for the teacher about:
+   - Persistence strategy (localStorage vs. Supabase)
+   - Transform UX (gizmos vs. buttons)
+   - Scope priorities (Supabase, copy/paste, keyboard shortcuts, etc.)
+4. Optional: If time, start Supabase setup
+
+### Tracker Update
+
+- 2026-05-17 (Session in progress): Implemented and tested localStorage save/load, added navbar buttons, confirmed round-trip persistence works. Next: Supabase if time, otherwise demo prep tomorrow.
+
+## Demo Script (2–3 minute)
+
+Goal: quickly show core flows — place media, transform, save/load — to demonstrate functionality and persistence.
+
+0:00 — Quick intro (10–15s)
+- One-line purpose: "This is the Memorial Space editor — place memories into a shared room and persist the scene." 
+
+0:15 — Place a photo (30–45s)
+- Open Media → Foto → choose a sample (e.g., Sunset.jpg). Add a title like "Sunset Memory" and click `Plaatsen`.
+- Show the placed photo in the scene, point out auto-selection and the inspector panel.
+
+0:50 — Transform a placed object (30s)
+- Use Move (Forward/Back/Left/Right/Up/Down) to position the photo.
+- Rotate once or twice and click Larger to scale up — show immediate visual update.
+
+1:20 — Add audio (20–30s)
+- Open Media → Audio → upload or choose sample → place into the room.
+- Click the audio card and demonstrate playback (if implemented) or note it's placeholder for now.
+
+1:45 — Save and reload (30–45s)
+- Click `💾 Save` (top bar) — note success alert.
+- Refresh the page to simulate returning later (optional: do this live).
+- Click `📂 Load` — show scene restored with photo/audio and transforms intact.
+
+2:20 — Closing (10–20s)
+- Ask for feedback: "Does this flow match expectations? Would you prefer gizmo drag handles instead of buttons for transforms?"
+
+Quick smoke-test checklist (before call):
+- Place a photo, move, rotate, scale, save, reload → verify all transforms persist.
+- Place audio, save, reload → verify audio card restored (and playback if implemented).
+- Verify Delete key removes selected object (if added) and inspector remains stable.
+
+Three targeted feedback questions for the teacher:
+1. Persistence: prefer localStorage prototype for demo or should I prioritise Supabase-backed scenes for the final demo?
+2. Transform UX: are button-based transforms acceptable, or should I implement gizmo-style drag handles first?
+3. Scope: which features matter most next — Supabase integration, copy/paste & keyboard shortcuts, or improved media upload/processing?
+
+---
+
+Confirmed: demo script appended and todo updated.
+
