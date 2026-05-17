@@ -22,6 +22,14 @@ const transformStep = 0.2
 const rotateStep = Math.PI / 12
 const scaleStep = 0.1
 const assetModels = ref([])
+const hideDeleteHint = ref(false)
+// Initialize from localStorage if available
+try {
+  const _saved = localStorage.getItem('memorial_hideDeleteHint')
+  if (_saved === 'true') hideDeleteHint.value = true
+} catch (e) {
+  // ignore when unavailable
+}
 
 let animationFrameId = 0
 let resizeObserver = null
@@ -46,6 +54,137 @@ const availableAssets = [
   { id: 'photo-frame', name: 'Fotolijst', icon: '🖼️', file: '/models/photo-frame.glb' },
   { id: 'flower', name: 'Bloem', icon: '🌹', file: '/models/flower.glb' },
 ]
+
+// Serialize scene state to JSON for localStorage
+const serializeSceneState = () => {
+  const state = {
+    version: 1,
+    timestamp: new Date().toISOString(),
+    objects: sceneObjects.value.map(record => ({
+      id: record.id,
+      assetId: record.assetId,
+      position: record.position ? { x: record.position.x, y: record.position.y, z: record.position.z } : { x: 0, y: 0, z: 0 },
+      rotation: record.rotation ? { x: record.rotation.x, y: record.rotation.y, z: record.rotation.z } : { x: 0, y: 0, z: 0 },
+      scale: record.scale ? { x: record.scale.x, y: record.scale.y, z: record.scale.z } : { x: 1, y: 1, z: 1 },
+      photoData: record.photoData || null,
+      audioData: record.audioData || null,
+      videoData: record.videoData || null,
+      messageData: record.messageData || null,
+      candleData: record.candleData || null,
+    })),
+  }
+  return JSON.stringify(state)
+}
+
+// Deserialize scene state from JSON and rebuild scene
+const deserializeSceneState = async (jsonString) => {
+  try {
+    const state = JSON.parse(jsonString)
+    if (state.version !== 1) {
+      console.error('Unknown scene state version')
+      return false
+    }
+
+    // Clear existing objects
+    sceneObjects.value.forEach(record => {
+      if (record.object && room) {
+        room.remove(record.object)
+      }
+    })
+    sceneObjects.value = []
+    clearSceneSelection()
+
+    // Rebuild objects from state
+    for (const objData of state.objects) {
+      sceneObjectIdCounter = Math.max(sceneObjectIdCounter, objData.id + 1)
+
+      if (objData.assetId === 'photo' && objData.photoData) {
+        const photoCard = createPhotoCard(objData.photoData)
+        photoCard.position.set(objData.position.x, objData.position.y, objData.position.z)
+        photoCard.rotation.set(objData.rotation.x, objData.rotation.y, objData.rotation.z)
+        photoCard.scale.set(objData.scale.x, objData.scale.y, objData.scale.z)
+        room.add(photoCard)
+        createSceneObjectRecord(photoCard, objData.assetId, { photoData: objData.photoData })
+        sceneObjects.value[sceneObjects.value.length - 1].id = objData.id
+        photoCard.userData.sceneObjectId = objData.id
+      } else if (objData.assetId === 'audio' && objData.audioData) {
+        const audioCard = createAudioCard(objData.audioData)
+        audioCard.position.set(objData.position.x, objData.position.y, objData.position.z)
+        audioCard.rotation.set(objData.rotation.x, objData.rotation.y, objData.rotation.z)
+        audioCard.scale.set(objData.scale.x, objData.scale.y, objData.scale.z)
+        room.add(audioCard)
+        createSceneObjectRecord(audioCard, objData.assetId, { audioData: objData.audioData })
+        sceneObjects.value[sceneObjects.value.length - 1].id = objData.id
+        audioCard.userData.sceneObjectId = objData.id
+      } else if (objData.assetId === 'video' && objData.videoData) {
+        const videoCard = createVideoCard(objData.videoData)
+        videoCard.position.set(objData.position.x, objData.position.y, objData.position.z)
+        videoCard.rotation.set(objData.rotation.x, objData.rotation.y, objData.rotation.z)
+        videoCard.scale.set(objData.scale.x, objData.scale.y, objData.scale.z)
+        room.add(videoCard)
+        createSceneObjectRecord(videoCard, objData.assetId, { videoData: objData.videoData })
+        sceneObjects.value[sceneObjects.value.length - 1].id = objData.id
+        videoCard.userData.sceneObjectId = objData.id
+      } else if (objData.assetId === 'message' && objData.messageData) {
+        const messageGroup = new THREE.Group()
+        messageGroup.position.set(objData.position.x, objData.position.y, objData.position.z)
+        messageGroup.rotation.set(objData.rotation.x, objData.rotation.y, objData.rotation.z)
+        messageGroup.scale.set(objData.scale.x, objData.scale.y, objData.scale.z)
+        room.add(messageGroup)
+        createSceneObjectRecord(messageGroup, objData.assetId, { messageData: objData.messageData })
+        sceneObjects.value[sceneObjects.value.length - 1].id = objData.id
+        messageGroup.userData.sceneObjectId = objData.id
+      } else if (['candle', 'photo-frame', 'flower'].includes(objData.assetId)) {
+        // For 3D asset types, create placeholder
+        let model = createPlaceholderModel(objData.assetId)
+        model.position.set(objData.position.x, objData.position.y, objData.position.z)
+        model.rotation.set(objData.rotation.x, objData.rotation.y, objData.rotation.z)
+        model.scale.set(objData.scale.x, objData.scale.y, objData.scale.z)
+        room.add(model)
+        createSceneObjectRecord(model, objData.assetId, {})
+        sceneObjects.value[sceneObjects.value.length - 1].id = objData.id
+        model.userData.sceneObjectId = objData.id
+      }
+    }
+
+    return true
+  } catch (error) {
+    console.error('Failed to deserialize scene state:', error)
+    return false
+  }
+}
+
+// Save scene to localStorage
+const saveSceneToStorage = () => {
+  try {
+    const serialized = serializeSceneState()
+    localStorage.setItem('memorialScene', serialized)
+    alert('Scene saved successfully!')
+  } catch (error) {
+    console.error('Failed to save scene:', error)
+    alert('Failed to save scene')
+  }
+}
+
+// Load scene from localStorage
+const loadSceneFromStorage = async () => {
+  try {
+    const stored = localStorage.getItem('memorialScene')
+    if (!stored) {
+      alert('No saved scene found')
+      return
+    }
+    const success = await deserializeSceneState(stored)
+    if (success) {
+      alert('Scene loaded successfully!')
+    } else {
+      alert('Failed to load scene')
+    }
+  } catch (error) {
+    console.error('Failed to load scene:', error)
+    alert('Failed to load scene')
+  }
+}
 
 const openQuickPanel = (panelType) => {
   if (activePanel.value === panelType && showQuickPanel.value) {
@@ -259,8 +398,20 @@ const handleWindowKeydown = (event) => {
     return
   }
 
-  if (event.key === 'Delete' || event.key === 'Backspace') {
+  const key = (event.key || '').toLowerCase()
+  if (key === 'delete' || key === 'del' || key === 'backspace') {
+    // Prevent accidental browser navigation when Backspace/Delete is used
+    try { event.preventDefault() } catch (e) {}
     removeSelectedSceneObject()
+  }
+}
+
+const dismissDeleteHint = () => {
+  hideDeleteHint.value = true
+  try {
+    localStorage.setItem('memorial_hideDeleteHint', 'true')
+  } catch (e) {
+    // ignore
   }
 }
 
@@ -940,6 +1091,24 @@ onBeforeUnmount(() => {
         {{ showFloor ? 'Vloer aan' : 'Vloer uit' }}
       </button>
 
+      <button
+        type="button"
+        class="floor-toggle"
+        title="Save scene to local storage"
+        @click="saveSceneToStorage"
+      >
+        💾 Save
+      </button>
+
+      <button
+        type="button"
+        class="floor-toggle"
+        title="Load scene from local storage"
+        @click="loadSceneFromStorage"
+      >
+        📂 Load
+      </button>
+
       <div class="profile-area">
         <span class="profile-name">{{ username }}</span>
         <div ref="profileMenuElement" class="profile-menu-wrap">
@@ -1012,6 +1181,11 @@ onBeforeUnmount(() => {
           <h3>Geselecteerd object</h3>
           <button type="button" class="selection-close-button" @click="clearSceneSelection">×</button>
         </div>
+
+          <div v-if="!hideDeleteHint" class="selection-hint">
+            <span>Druk op de Delete-knop om het geselecteerde object te verwijderen</span>
+            <button type="button" class="selection-hint-close" @click="dismissDeleteHint" aria-label="Sluit hint">×</button>
+          </div>
 
         <div class="selection-controls">
           <div class="control-group">
@@ -1350,6 +1524,22 @@ onBeforeUnmount(() => {
   display: flex;
   gap: 10px;
   margin-top: 14px;
+}
+
+.selection-hint {
+  font-size: 12px;
+  color: #6b6b6b;
+  padding: 8px 16px 12px 0;
+}
+
+.selection-hint-close {
+  background: transparent;
+  border: none;
+  font-size: 16px;
+  color: #8a8a8a;
+  float: right;
+  margin-right: 8px;
+  cursor: pointer;
 }
 
 .selection-delete-button {
