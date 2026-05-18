@@ -2,6 +2,7 @@
 import { ref, onMounted } from 'vue'
 import SceneCanvas from './components/SceneCanvas.vue'
 import Login from './components/Login.vue'
+import { getSupabase } from './lib/supabase'
 
 const authUser = ref(null)
 const adminRooms = ref([])
@@ -14,6 +15,34 @@ onMounted(() => {
     if (saved) authUser.value = JSON.parse(saved)
   } catch (e) {
     // ignore
+  }
+  // If Supabase is configured, subscribe to auth state changes
+  const supabase = getSupabase()
+  if (supabase) {
+    // initialize from supabase current user if available
+    supabase.auth.getUser().then(res => {
+      const u = res.data?.user
+      if (u) {
+        const stored = localStorage.getItem('audreyUser')
+        if (!stored) {
+          const userObj = { email: u.email, role: 'viewer', displayName: (u.email && u.email.split('@')[0]) || 'User', avatar: '', supabaseId: u.id }
+          authUser.value = userObj
+          try { localStorage.setItem('audreyUser', JSON.stringify(userObj)) } catch (e) {}
+        }
+      }
+    })
+
+    supabase.auth.onAuthStateChange((event, session) => {
+      if (session && session.user) {
+        const u = session.user
+        const userObj = { email: u.email, role: authUser.value?.role || 'viewer', displayName: (u.email && u.email.split('@')[0]) || 'User', avatar: authUser.value?.avatar || '', supabaseId: u.id }
+        authUser.value = userObj
+        try { localStorage.setItem('audreyUser', JSON.stringify(userObj)) } catch (e) {}
+      } else {
+        // signed out
+        // keep local mock behavior
+      }
+    })
   }
 })
 

@@ -1,6 +1,7 @@
 <script setup>
 import { ref } from 'vue'
 import { logEvent } from '../lib/analytics'
+import { getSupabase } from '../lib/supabase'
 const emit = defineEmits(['login'])
 
 const email = ref('')
@@ -27,7 +28,7 @@ const createAvatarDataUrl = (name) => {
   return `data:image/svg+xml;utf8,${encodeURIComponent(svg)}`
 }
 
-const proceedFromForm = () => {
+const proceedFromForm = async () => {
   // basic validation
   if (!email.value) email.value = 'guest@example.com'
 
@@ -35,6 +36,8 @@ const proceedFromForm = () => {
     alert('Enter a password for admin (demo)')
     return
   }
+
+  const supabase = getSupabase()
 
   if (role.value === 'editor') {
     if (!inviteCode.value) {
@@ -49,17 +52,62 @@ const proceedFromForm = () => {
     return
   }
 
-  // Non-invited: quick loading then emit
-  startLoadingAndEmit()
+  // If Supabase is configured, try to sign in/up; otherwise fallback to local mock
+  if (supabase) {
+    startLoadingAndEmit(true)
+  } else {
+    startLoadingAndEmit(false)
+  }
 }
 
-const startLoadingAndEmit = () => {
+const startLoadingAndEmit = async (useSupabase = false) => {
   step.value = 'loading'
+  const supabase = getSupabase()
+
+  if (useSupabase && supabase) {
+    try {
+      // Try sign in with password if provided
+      let session = null
+      if (password.value) {
+        const res = await supabase.auth.signInWithPassword({ email: email.value, password: password.value })
+        if (res.error) {
+          // try sign up then
+          await supabase.auth.signUp({ email: email.value, password: password.value })
+          const r2 = await supabase.auth.signInWithPassword({ email: email.value, password: password.value })
+          session = r2.data?.session
+        } else {
+          session = res.data?.session
+        }
+      } else {
+        // create a temporary account for non-password roles (demo)
+        const demoPassword = Math.random().toString(36).slice(2, 10) + 'A!'
+        await supabase.auth.signUp({ email: email.value, password: demoPassword })
+        const r3 = await supabase.auth.signInWithPassword({ email: email.value, password: demoPassword })
+        session = r3.data?.session
+      }
+
+      // If session exists, use supabase user as source of truth
+      if (session && session.user) {
+        const u = session.user
+        const userObj = { email: u.email || email.value, role: role.value, displayName: displayName.value || (u.email && u.email.split('@')[0]) || 'Guest', avatar: chosenAvatar.value || '' , supabaseId: u.id }
+        if (remember.value) {
+          try { localStorage.setItem('audreyUser', JSON.stringify(userObj)) } catch (e) {}
+        }
+        try { logEvent('login.success', { role: role.value, method: 'supabase', invited: role.value === 'editor' }) } catch (e) {}
+        setTimeout(() => emit('login', userObj), 400)
+        return
+      }
+    } catch (e) {
+      // fallthrough to local mock
+    }
+  }
+
+  // Local fallback
   const user = buildUserObject()
   if (remember.value) {
     try { localStorage.setItem('audreyUser', JSON.stringify(user)) } catch (e) {}
   }
-  try { logEvent('login.success', { role: role.value, method: 'mock', invited: role.value === 'editor' }) } catch (e) {}
+  try { logEvent('login.success', { role: role.value, method: useSupabase ? 'supabase_fallback' : 'mock', invited: role.value === 'editor' }) } catch (e) {}
   setTimeout(() => emit('login', user), 700)
 }
 
