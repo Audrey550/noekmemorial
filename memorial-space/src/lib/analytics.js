@@ -1,4 +1,6 @@
 // Lightweight analytics for demo: logs events to localStorage and console.
+import { getSupabase } from './supabase'
+
 const STORAGE_KEY = 'audrey_analytics_events'
 let events = []
 
@@ -25,6 +27,25 @@ const scrubProps = (props = {}) => {
   return p
 }
 
+async function trySendToSupabase(entry) {
+  const supabase = getSupabase()
+  if (!supabase) return
+  try {
+    const { data: userData } = await supabase.auth.getUser()
+    const userId = userData && userData.user ? userData.user.id : null
+    const payload = {
+      id: entry.id,
+      user_id: userId,
+      name: entry.name,
+      timestamp: entry.timestamp,
+      props: entry.props
+    }
+    await supabase.from('events').insert(payload)
+  } catch (e) {
+    // ignore failures (network, missing table, permissions) for demo
+  }
+}
+
 export function logEvent(name, props = {}) {
   if (!events.length) load()
   const entry = {
@@ -37,6 +58,8 @@ export function logEvent(name, props = {}) {
   save()
   // console-friendly output
   try { console.log('[analytics]', entry.name, entry.props) } catch (e) {}
+  // Fire-and-forget supabase send
+  try { trySendToSupabase(entry) } catch (e) {}
 }
 
 export function getEvents() {
