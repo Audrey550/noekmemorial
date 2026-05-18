@@ -6,6 +6,7 @@ import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js'
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js'
 import AssetPanel from './AssetPanel.vue'
 import { logEvent } from '../lib/analytics'
+import { getSupabase } from '../lib/supabase'
 
 const props = defineProps({ currentUser: Object, roomId: { type: [String, Number], default: null } })
 
@@ -543,7 +544,20 @@ const openAdminSettings = () => {
   showAdminSettingsModal.value = true
   showProfileMenu.value = false
 }
-const handleLogout = () => { emit('logout'); showProfileMenu.value = false }
+const handleLogout = async (event) => {
+  if (event && event.stopPropagation) {
+    event.stopPropagation()
+    try { event.preventDefault() } catch (e) {}
+  }
+  try {
+    const supabase = getSupabase()
+    if (supabase && supabase.auth && supabase.auth.signOut) {
+      await supabase.auth.signOut()
+    }
+  } catch (e) {}
+  emit('logout')
+  showProfileMenu.value = false
+}
 
 const saveAdminSettings = () => {
   // update local display name and persist to localStorage and notify parent
@@ -1336,7 +1350,7 @@ onBeforeUnmount(() => {
                 Room settings
               </button>
             </template>
-            <button type="button" class="profile-menu-item" role="menuitem" @click="handleLogout">
+            <button type="button" class="profile-menu-item" role="menuitem" @click="handleLogout($event)" @mousedown.stop.prevent="handleLogout($event)" tabindex="0">
               Logout
             </button>
           </div>
@@ -1660,7 +1674,8 @@ onBeforeUnmount(() => {
   background: rgba(255, 255, 255, 0.96);
   box-shadow: 0 14px 30px rgba(0, 0, 0, 0.14);
   backdrop-filter: blur(12px);
-  z-index: 20;
+  z-index: 9999;
+  pointer-events: auto;
 }
 
 .profile-menu-item {
