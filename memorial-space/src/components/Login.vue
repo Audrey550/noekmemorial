@@ -1,5 +1,6 @@
 <script setup>
 import { ref } from 'vue'
+import { logEvent } from '../lib/analytics'
 const emit = defineEmits(['login'])
 
 const email = ref('')
@@ -40,6 +41,7 @@ const proceedFromForm = () => {
       alert('Enter an invite code for invited/editor user (demo)')
       return
     }
+    try { logEvent('invite.validated', { role: 'editor' }) } catch (e) {}
     // go to profile selection for invited users
     displayName.value = email.value.split('@')[0]
     chosenAvatar.value = createAvatarDataUrl(displayName.value)
@@ -57,6 +59,7 @@ const startLoadingAndEmit = () => {
   if (remember.value) {
     try { localStorage.setItem('audreyUser', JSON.stringify(user)) } catch (e) {}
   }
+  try { logEvent('login.success', { role: role.value, method: 'mock', invited: role.value === 'editor' }) } catch (e) {}
   setTimeout(() => emit('login', user), 700)
 }
 

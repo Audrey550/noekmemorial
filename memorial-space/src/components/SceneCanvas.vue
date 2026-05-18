@@ -5,6 +5,7 @@ import * as THREE from 'three'
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js'
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js'
 import AssetPanel from './AssetPanel.vue'
+import { logEvent } from '../lib/analytics'
 
 const props = defineProps({ currentUser: Object, roomId: { type: [String, Number], default: null } })
 
@@ -127,6 +128,8 @@ const loadRoomMeta = () => {
   } catch (e) {
     roomMembers.value = []
   }
+  // analytics: room opened
+  try { logEvent('room.opened', { roomId: id, privacy: roomPrivacy.value }) } catch (e) {}
 }
 
 const saveRoomMeta = () => {
@@ -185,13 +188,16 @@ const inviteMember = () => {
   saveRoomMembers()
   inviteEmail.value = ''
   inviteRole.value = 'editor'
+  try { logEvent('member.invited', { memberId: member.id, role: member.role }) } catch (e) {}
   alert('Member invited (demo): ' + member.email)
 }
 
 const removeMember = (id) => {
   if (!confirm('Remove this member from the room?')) return
+  const removed = roomMembers.value.find(m => m.id === id)
   roomMembers.value = roomMembers.value.filter(m => m.id !== id)
   saveRoomMembers()
+  try { logEvent('member.removed', { memberId: id, role: removed ? removed.role : undefined }) } catch (e) {}
 }
 
 const toggleBlockMember = (id) => {
@@ -199,6 +205,7 @@ const toggleBlockMember = (id) => {
   if (!m) return
   m.status = m.status === 'blocked' ? 'active' : 'blocked'
   saveRoomMembers()
+  try { logEvent('member.toggled_block', { memberId: id, newStatus: m.status }) } catch (e) {}
 }
 
 const deleteRoom = () => {
@@ -211,6 +218,7 @@ const deleteRoom = () => {
     localStorage.removeItem(`audreyRoom_${id}`)
     localStorage.removeItem(`audreyRoomMembers_${id}`)
   } catch (e) {}
+  try { logEvent('room.deleted', { roomId: id }) } catch (e) {}
   showRoomSettingsModal.value = false
   emit('room-deleted', id)
   alert('Room deleted (demo).')
@@ -299,6 +307,7 @@ const saveSceneToStorage = () => {
   try {
     const serialized = serializeSceneState()
     localStorage.setItem('memorialScene', serialized)
+    try { logEvent('scene.saved', { objectCount: sceneObjects.value.length }) } catch (e) {}
     alert('Scene saved successfully!')
   } catch (error) {
     console.error('Failed to save scene:', error)
@@ -316,6 +325,7 @@ const loadSceneFromStorage = async () => {
     }
     const success = await deserializeSceneState(stored)
     if (success) {
+      try { logEvent('scene.loaded', { objectCount: sceneObjects.value.length }) } catch (e) {}
       alert('Scene loaded successfully!')
     } else {
       alert('Failed to load scene')
