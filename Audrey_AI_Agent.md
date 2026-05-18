@@ -386,3 +386,39 @@ Three targeted feedback questions for the teacher:
 
 Confirmed: demo script appended and todo updated.
 
+## Session Snapshot (2026-05-18)
+### Recap — Yesterday's achievements
+- Local `save/load` via `localStorage` implemented and tested (round-trip restore verified).
+- Foto/Audio/Video flows are present; Video recording work remains in progress.
+- Object selection, inspector, and full transform controls (move/rotate/scale/delete) are working.
+- Asset panel, GLTFLoader, and placement flow are stable for the demo.
+
+### Tonight (before 19:00) — Timeboxed options
+- Option 1 — Quick demo polish & login UI (fast): implement a simple login page (email-only mock or local), tie a user state to `localStorage`, and run smoke-tests. Est. 60–90 min.
+- Option 2 — Supabase initialization (medium): create a Supabase project, add a `users` table, configure `@supabase/supabase-js` client in the app, and add environment variables. Est. 90–150 min.
+- Option 3 — Supabase auth + access control (ambitious): wire Supabase email auth (magic-link or email+password), create `rooms` and `invitations` tables, and implement basic room rules (admin/co-editor/viewer). Est. 2–3+ hours.
+- Option 4 — Access control UI (medium): add room privacy toggle, invite-code generation UI, and a placeholder email-invite flow (no outbound email). Est. 60–120 min.
+
+### Recommended pick for tonight
+- If you want Supabase groundwork now: pick Option 2 (init) + optionally start Option 3 if time remains.
+- If you prefer fastest visible progress for the meeting: pick Option 1 (login UI mock) + Quick smoke-test (save/load). This gives a presentable auth flow without external setup.
+
+I updated this tracker and created a focused todo list for tonight. Tell me which option(s) you want me to start and I'll begin immediately.
+
+---
+Tracker updated: 2026-05-18 — appended session snapshot and tonight options.
+
+### Progress (2026-05-18, in-session)
+- Started Option 1: implementing mock/local login UI. Added `Login.vue` and wired local auth state in `App.vue`. User can choose role (`admin`, `editor`, `viewer`) and persist to `localStorage` for the demo.
+ - Completed Option 1: Login mock finished and role-based flows wired.
+   - `Login.vue`: role-specific fields (admin: password, editor: invite code, viewer: email), avatar generation, displayName.
+   - `App.vue`: admin room-list flow (localStorage-backed demo rooms), create/delete rooms, open room flows.
+   - `SceneCanvas.vue`: accepts `currentUser` + `roomId`, shows `username` and avatar, blocks viewers from adding objects, and adds room privacy toggle + invite-code generation (localStorage-backed demo).
+
+Next: Quick smoke tests of the login → open editor flow, then begin Supabase client setup if all looks good.
+ 
+### Smoke test (2026-05-18)
+- Action: programmatically exercised the app in the dev server: logged in as admin, opened Media → Foto, placed a sample photo, used Save, reloaded, and used Load. 
+- Result: success — placed object restored after save/load. Admin-only controls (privacy, invite generation) visible. Viewers are blocked from adding objects. 
+- Tracker/Todo: marked quick smoke-test complete. Ready to start Supabase init next.
+

@@ -1,12 +1,38 @@
 <script setup>
-import { onBeforeUnmount, onMounted, ref } from 'vue'
+import { onBeforeUnmount, onMounted, ref, watch } from 'vue'
+const emit = defineEmits(['logout', 'update-user', 'room-deleted'])
 import * as THREE from 'three'
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js'
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js'
 import AssetPanel from './AssetPanel.vue'
 
+const props = defineProps({ currentUser: Object, roomId: { type: [String, Number], default: null } })
+
 const canvasRef = ref(null)
 const username = ref('Naam')
+const roomPrivacy = ref('private')
+const roomInviteCode = ref(null)
+const roomMembers = ref([])
+const inviteEmail = ref('')
+const inviteRole = ref('editor')
+const deleteConfirmText = ref('')
+const showRoomSettingsModal = ref(false)
+const showAdminSettingsModal = ref(false)
+const editDisplayName = ref('')
+
+// initialize username from current user when available
+if (props.currentUser && props.currentUser.displayName) {
+  username.value = props.currentUser.displayName
+}
+
+watch(() => props.currentUser, (nu) => {
+  if (nu && nu.displayName) username.value = nu.displayName
+})
+// reload room metadata when roomId changes
+watch(() => props.roomId, () => {
+  loadRoomMeta()
+  loadRoomMembers()
+})
 const sceneObjects = ref([])
 const showQuickPanel = ref(false)
 const activePanel = ref('media')
@@ -40,7 +66,7 @@ let room = null
 let camera = null
 let floorMesh = null
 let roomShadow = null
-let profileMenuElement = null
+const profileMenuElement = ref(null)
 let selectionHelper = null
 let sceneObjectIdCounter = 1
 let gltfLoader = new GLTFLoader()
@@ -74,6 +100,120 @@ const serializeSceneState = () => {
     })),
   }
   return JSON.stringify(state)
+}
+
+// Load/save basic room metadata (privacy & invite code) in localStorage for demo
+const loadRoomMeta = () => {
+  const id = props.roomId || 'default'
+  try {
+    const stored = localStorage.getItem(`audreyRoom_${id}`)
+    if (stored) {
+      const data = JSON.parse(stored)
+      roomPrivacy.value = data.privacy || 'private'
+      roomInviteCode.value = data.inviteCode || null
+    } else {
+      roomPrivacy.value = 'private'
+      roomInviteCode.value = null
+    }
+  } catch (e) {
+    roomPrivacy.value = 'private'
+    roomInviteCode.value = null
+  }
+
+  // load members
+  try {
+    const mem = localStorage.getItem(`audreyRoomMembers_${id}`)
+    roomMembers.value = mem ? JSON.parse(mem) : []
+  } catch (e) {
+    roomMembers.value = []
+  }
+}
+
+const saveRoomMeta = () => {
+  const id = props.roomId || 'default'
+  try {
+    localStorage.setItem(`audreyRoom_${id}`, JSON.stringify({ privacy: roomPrivacy.value, inviteCode: roomInviteCode.value }))
+  } catch (e) {}
+  try {
+    localStorage.setItem(`audreyRoomMembers_${id}`, JSON.stringify(roomMembers.value))
+  } catch (e) {}
+
+}
+
+const toggleRoomPrivacy = () => {
+  if (!props.currentUser || props.currentUser.role !== 'admin') {
+    alert('Only the room owner can change privacy (demo).')
+    return
+  }
+  roomPrivacy.value = roomPrivacy.value === 'private' ? 'public' : 'private'
+  saveRoomMeta()
+}
+
+const generateInviteCode = () => {
+  if (!props.currentUser || props.currentUser.role !== 'admin') {
+    alert('Only the room owner can generate invite codes (demo).')
+    return
+  }
+  const code = `INV-${Math.random().toString(36).substring(2,8).toUpperCase()}`
+  roomInviteCode.value = code
+  saveRoomMeta()
+  alert(`Invite code generated: ${code}`)
+}
+
+const loadRoomMembers = () => {
+  const id = props.roomId || 'default'
+  try {
+    const mem = localStorage.getItem(`audreyRoomMembers_${id}`)
+    roomMembers.value = mem ? JSON.parse(mem) : []
+  } catch (e) {
+    roomMembers.value = []
+  }
+}
+
+const saveRoomMembers = () => {
+  const id = props.roomId || 'default'
+  try {
+    localStorage.setItem(`audreyRoomMembers_${id}`, JSON.stringify(roomMembers.value))
+  } catch (e) {}
+}
+
+const inviteMember = () => {
+  if (!inviteEmail.value) return alert('Please provide an email to invite')
+  const id = `m_${Date.now()}`
+  const member = { id, email: inviteEmail.value.trim(), role: inviteRole.value || 'editor', status: 'invited' }
+  roomMembers.value.push(member)
+  saveRoomMembers()
+  inviteEmail.value = ''
+  inviteRole.value = 'editor'
+  alert('Member invited (demo): ' + member.email)
+}
+
+const removeMember = (id) => {
+  if (!confirm('Remove this member from the room?')) return
+  roomMembers.value = roomMembers.value.filter(m => m.id !== id)
+  saveRoomMembers()
+}
+
+const toggleBlockMember = (id) => {
+  const m = roomMembers.value.find(x => x.id === id)
+  if (!m) return
+  m.status = m.status === 'blocked' ? 'active' : 'blocked'
+  saveRoomMembers()
+}
+
+const deleteRoom = () => {
+  // require typed confirmation of room id or DELETE
+  const id = props.roomId || 'default'
+  if (!deleteConfirmText.value || deleteConfirmText.value !== 'DELETE') {
+    return alert('Type DELETE in the confirmation box to confirm room deletion')
+  }
+  try {
+    localStorage.removeItem(`audreyRoom_${id}`)
+    localStorage.removeItem(`audreyRoomMembers_${id}`)
+  } catch (e) {}
+  showRoomSettingsModal.value = false
+  emit('room-deleted', id)
+  alert('Room deleted (demo).')
 }
 
 // Deserialize scene state from JSON and rebuild scene
@@ -201,7 +341,9 @@ const closeQuickPanel = () => {
 }
 
 const handlePlacePhoto = (photoData) => {
-  if (!scene || !room) {
+  if (!scene || !room) return
+  if (props.currentUser && props.currentUser.role === 'viewer') {
+    alert('View-only users cannot add objects (demo).')
     return
   }
 
@@ -210,11 +352,19 @@ const handlePlacePhoto = (photoData) => {
 
 const handlePlaceAudio = (audioData) => {
   if (!scene || !room) return
+  if (props.currentUser && props.currentUser.role === 'viewer') {
+    alert('View-only users cannot add objects (demo).')
+    return
+  }
   placeAudioInRoom(audioData)
 }
 
 const handlePlaceVideo = (videoData) => {
   if (!scene || !room) return
+  if (props.currentUser && props.currentUser.role === 'viewer') {
+    alert('View-only users cannot add objects (demo).')
+    return
+  }
   placeVideoInRoom(videoData)
 }
 
@@ -317,6 +467,10 @@ const placeVideoInRoom = (videoData) => {
 
 // Function to add an object to the scene
 const addObjectToScene = async (assetId) => {
+  if (props.currentUser && props.currentUser.role === 'viewer') {
+    alert('View-only users cannot add objects (demo).')
+    return
+  }
   const asset = availableAssets.find(a => a.id === assetId)
   if (!asset || !scene) return
 
@@ -373,12 +527,39 @@ const toggleProfileMenu = () => {
   showProfileMenu.value = !showProfileMenu.value
 }
 
+const openRoomSettings = () => { showRoomSettingsModal.value = true; showProfileMenu.value = false }
+const openAdminSettings = () => {
+  editDisplayName.value = username.value || (props.currentUser && props.currentUser.displayName) || ''
+  showAdminSettingsModal.value = true
+  showProfileMenu.value = false
+}
+const handleLogout = () => { emit('logout'); showProfileMenu.value = false }
+
+const saveAdminSettings = () => {
+  // update local display name and persist to localStorage and notify parent
+  username.value = editDisplayName.value || username.value
+  try {
+    const stored = localStorage.getItem('audreyUser')
+    if (stored) {
+      const u = JSON.parse(stored)
+      u.displayName = username.value
+      localStorage.setItem('audreyUser', JSON.stringify(u))
+      emit('update-user', u)
+    } else if (props.currentUser) {
+      const u = { ...props.currentUser, displayName: username.value }
+      localStorage.setItem('audreyUser', JSON.stringify(u))
+      emit('update-user', u)
+    }
+  } catch (e) {}
+  showAdminSettingsModal.value = false
+}
+
 const handleDocumentClick = (event) => {
   if (!showProfileMenu.value) {
     return
   }
 
-  if (profileMenuElement && !profileMenuElement.contains(event.target)) {
+  if (profileMenuElement.value && !profileMenuElement.value.contains(event.target)) {
     closeProfileMenu()
   }
 }
@@ -795,6 +976,9 @@ onMounted(() => {
     return
   }
 
+  // load room metadata for privacy/invite demo
+  loadRoomMeta()
+
   scene = new THREE.Scene()
   scene.fog = new THREE.Fog('#ececec', 22, 64)
 
@@ -808,7 +992,7 @@ onMounted(() => {
   })
   renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2))
   renderer.shadowMap.enabled = true
-  renderer.shadowMap.type = THREE.PCFSoftShadowMap
+  renderer.shadowMap.type = THREE.PCFShadowMap
 
   controls = new OrbitControls(camera, renderer.domElement)
   controls.enableDamping = true
@@ -1109,12 +1293,21 @@ onBeforeUnmount(() => {
         📂 Load
       </button>
 
+      <button v-if="props.currentUser && props.currentUser.role === 'admin'" type="button" class="floor-toggle" title="Toggle room privacy" @click="toggleRoomPrivacy">
+        {{ roomPrivacy === 'private' ? 'Private' : 'Public' }}
+      </button>
+
+      <button v-if="props.currentUser && props.currentUser.role === 'admin'" type="button" class="floor-toggle" title="Generate invite code" @click="generateInviteCode">
+        {{ roomInviteCode ? roomInviteCode : 'Generate invite' }}
+      </button>
+
       <div class="profile-area">
         <span class="profile-name">{{ username }}</span>
         <div ref="profileMenuElement" class="profile-menu-wrap">
           <button
             type="button"
             class="avatar"
+            :style="{ backgroundImage: props.currentUser && props.currentUser.avatar ? `url(${props.currentUser.avatar})` : undefined, backgroundSize: 'cover' }"
             aria-haspopup="menu"
             :aria-expanded="showProfileMenu"
             aria-label="Open profile menu"
@@ -1125,8 +1318,16 @@ onBeforeUnmount(() => {
           ></button>
 
           <div v-if="showProfileMenu" class="profile-menu" role="menu" aria-label="Profile options">
-            <button type="button" class="profile-menu-item" role="menuitem" @click="closeProfileMenu">
-              Instellingen
+            <template v-if="props.currentUser && props.currentUser.role === 'admin'">
+              <button type="button" class="profile-menu-item" role="menuitem" @click="openAdminSettings">
+                Admin settings
+              </button>
+              <button type="button" class="profile-menu-item" role="menuitem" @click="openRoomSettings">
+                Room settings
+              </button>
+            </template>
+            <button type="button" class="profile-menu-item" role="menuitem" @click="handleLogout">
+              Logout
             </button>
           </div>
         </div>
@@ -1253,6 +1454,90 @@ onBeforeUnmount(() => {
           </button>
         </div>
       </aside>
+
+      <!-- Room Settings Modal -->
+      <div v-if="showRoomSettingsModal" class="modal-backdrop" role="dialog" aria-modal="true">
+        <div class="modal-card">
+          <h3>Room settings</h3>
+          <div style="margin:10px 0">
+            <label style="display:flex;align-items:center;gap:8px">Privacy:
+              <button @click="toggleRoomPrivacy" style="margin-left:12px;padding:8px;border-radius:8px">{{ roomPrivacy === 'private' ? 'Private' : 'Public' }}</button>
+            </label>
+          </div>
+
+          <div style="margin:10px 0">
+            <button @click="generateInviteCode" style="padding:8px;border-radius:8px">{{ roomInviteCode ? 'Regenerate invite' : 'Generate invite' }}</button>
+            <div v-if="roomInviteCode" style="margin-top:8px">Code: <strong>{{ roomInviteCode }}</strong></div>
+          </div>
+
+          <hr />
+          <h4 style="margin-top:12px">Members</h4>
+          <div style="display:flex;gap:8px;margin-top:8px;align-items:center">
+            <input v-model="inviteEmail" placeholder="email@example.com" style="flex:1;padding:8px;border-radius:8px;border:1px solid #e6e6ee" />
+            <select v-model="inviteRole" style="padding:8px;border-radius:8px;border:1px solid #e6e6ee">
+              <option value="editor">Editor</option>
+              <option value="viewer">Viewer</option>
+            </select>
+            <button @click="inviteMember" style="padding:8px 10px;border-radius:8px">Invite</button>
+          </div>
+
+          <div style="max-height:160px;overflow:auto;margin-top:12px">
+            <div v-if="!roomMembers.length">No members yet.</div>
+            <ul v-else style="list-style:none;padding:0;margin:0">
+              <li v-for="m in roomMembers" :key="m.id" style="display:flex;justify-content:space-between;align-items:center;padding:8px;border-bottom:1px solid #f2f2f2">
+                <div style="display:flex;flex-direction:column">
+                  <strong>{{ m.email }}</strong>
+                  <small style="color:#666">Role: {{ m.role }} • Status: {{ m.status }}</small>
+                </div>
+                <div style="display:flex;gap:8px">
+                  <button @click="toggleBlockMember(m.id)" style="padding:6px;border-radius:8px">{{ m.status === 'blocked' ? 'Unblock' : 'Block' }}</button>
+                  <button @click="removeMember(m.id)" style="padding:6px;border-radius:8px">Remove</button>
+                </div>
+              </li>
+            </ul>
+          </div>
+
+          <hr />
+          <div style="margin-top:12px">
+            <h4>Danger zone</h4>
+            <div style="font-size:13px;color:#666;margin-top:6px">Deleting the room will remove its metadata and members (demo only).</div>
+            <div style="margin-top:8px;display:flex;gap:8px;align-items:center">
+              <input v-model="deleteConfirmText" placeholder="Type DELETE to confirm" style="flex:1;padding:8px;border-radius:8px;border:1px solid #e6e6ee" />
+              <button @click="deleteRoom" style="padding:8px 12px;border-radius:8px;background:#ff6b6b;color:#fff;border:none">Delete room</button>
+            </div>
+          </div>
+
+          <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:18px">
+            <button @click="showRoomSettingsModal = false" style="padding:8px 12px;border-radius:8px">Close</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Admin Settings Modal (placeholder) -->
+      <div v-if="showAdminSettingsModal" class="modal-backdrop" role="dialog" aria-modal="true">
+        <div class="modal-card">
+          <h3>Admin settings</h3>
+          <div style="display:flex;align-items:center;gap:12px;margin-top:12px">
+            <div style="width:56px;height:56px;border-radius:28px;overflow:hidden;background:#ddd">
+              <img v-if="props.currentUser && props.currentUser.avatar" :src="props.currentUser.avatar" style="width:100%;height:100%;object-fit:cover" />
+            </div>
+            <div>
+              <div style="font-weight:700">{{ props.currentUser ? props.currentUser.email : username }}</div>
+              <div style="font-size:13px;color:#666">Role: {{ props.currentUser ? props.currentUser.role : 'viewer' }}</div>
+            </div>
+          </div>
+
+          <div style="margin-top:12px">
+            <label style="display:block;font-size:13px;color:#333">Display name</label>
+            <input v-model="editDisplayName" style="width:100%;padding:8px;border-radius:8px;border:1px solid #e6e6ee;margin-top:6px" />
+          </div>
+
+          <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:18px">
+            <button @click="showAdminSettingsModal = false" style="padding:8px 12px;border-radius:8px">Cancel</button>
+            <button @click="saveAdminSettings" style="padding:8px 12px;border-radius:8px;background:#6c5ce7;color:#fff;border:none">Save</button>
+          </div>
+        </div>
+      </div>
     </section>
   </main>
 </template>
@@ -1366,6 +1651,37 @@ onBeforeUnmount(() => {
   box-shadow: 0 14px 30px rgba(0, 0, 0, 0.14);
   backdrop-filter: blur(12px);
   z-index: 20;
+}
+
+.profile-menu-item {
+  width: 100%;
+  border: none;
+  border-radius: 10px;
+  background: transparent;
+  color: #1a1a1a;
+  font-family: 'Outfit', 'Segoe UI', sans-serif;
+  font-size: 15px;
+  font-weight: 600;
+  padding: 10px 12px;
+  text-align: left;
+}
+
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(10,10,12,0.45);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 200;
+}
+
+.modal-card {
+  width: 520px;
+  background: #fff;
+  border-radius: 12px;
+  padding: 20px;
+  box-shadow: 0 18px 40px rgba(0,0,0,0.18);
 }
 
 .profile-menu-item {
