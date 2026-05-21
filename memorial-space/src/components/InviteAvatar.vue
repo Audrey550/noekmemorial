@@ -1,14 +1,32 @@
 <script setup>
 import { ref } from 'vue'
+import avatar01 from '../assets/invite/avatars/avatar_01.jpg'
+import avatar02 from '../assets/invite/avatars/avatar_02.jpg'
+import avatar03 from '../assets/invite/avatars/avatar_03.jpg'
+import avatar04 from '../assets/invite/avatars/avatar_04.jpg'
+import avatar05 from '../assets/invite/avatars/avatar_05.jpg'
+import avatar06 from '../assets/invite/avatars/avatar_06.jpg'
+import avatar07 from '../assets/invite/avatars/avatar_07.jpg'
+import avatar08 from '../assets/invite/avatars/avatar_08.jpg'
+import avatar09 from '../assets/invite/avatars/avatar_09.jpg'
+
 const emit = defineEmits(['next'])
 const selected = ref(null)
 const maxSize = 200 * 1024 // 200 KB recommended
 
 const stock = [
-  '#f8c6d0','#ffd6a5','#caffbf','#9bf6ff','#bdb2ff','#ffc6ff','#cdb4db','#ffadad','#caffbf'
+  { src: avatar01, label: 'Avatar 1' },
+  { src: avatar02, label: 'Avatar 2' },
+  { src: avatar03, label: 'Avatar 3' },
+  { src: avatar04, label: 'Avatar 4' },
+  { src: avatar05, label: 'Avatar 5' },
+  { src: avatar06, label: 'Avatar 6' },
+  { src: avatar07, label: 'Avatar 7' },
+  { src: avatar08, label: 'Avatar 8' },
+  { src: avatar09, label: 'Avatar 9' },
 ]
 
-const pick = (c) => { selected.value = c }
+const pick = (src) => { selected.value = src }
 
 const onFile = async (e) => {
   const f = e.target.files && e.target.files[0]
@@ -33,7 +51,9 @@ const submit = () => {
           <div class="stock-column" role="list" aria-label="Vooraf ingestelde profielfoto's">
             <div class="stock-grid">
               <div v-for="(c,i) in stock" :key="i" role="listitem">
-                <button type="button" @click="pick(c)" :class="['stock-item', selected === c ? 'selected' : '']" :style="{background:c}" :aria-pressed="selected===c" :aria-label="`Avatar optie ${i+1}`"></button>
+                <button type="button" @click="pick(c.src)" :class="['stock-item', selected === c.src ? 'selected' : '']" :aria-pressed="selected===c.src" :aria-label="c.label">
+                  <img :src="c.src" :alt="c.label" />
+                </button>
               </div>
             </div>
           </div>
@@ -62,7 +82,10 @@ const submit = () => {
 .stock-column{flex:1;display:flex;align-items:center;justify-content:center}
 .stock-grid{display:grid;grid-template-columns:repeat(3,72px);grid-template-rows:repeat(3,72px);gap:14px}
 .stock-item{width:72px;height:72px;border-radius:50%;cursor:pointer;box-shadow:0 6px 12px rgba(0,0,0,0.04);border:2px solid rgba(0,0,0,0.02)}
-.stock-item.selected{box-shadow:0 10px 20px rgba(111,66,193,0.12);outline:4px solid rgba(111,66,193,0.12)}
+.stock-item{padding:0;overflow:hidden;background:#fff;display:block}
+.stock-item img{width:100%;height:100%;object-fit:cover;display:block}
+.stock-item:hover{box-shadow:0 12px 22px rgba(111,66,193,0.18);outline:4px solid rgba(111,66,193,0.22);transform:translateY(-1px)}
+.stock-item.selected{box-shadow:0 14px 26px rgba(111,66,193,0.32);outline:4px solid rgba(123,95,184,0.38);transform:translateY(-1px)}
 .upload-column{width:240px;display:flex;flex-direction:column;align-items:center;justify-content:center}
 .upload-panel{width:220px;height:140px;border-radius:12px;border:2px dashed #dcd6e8;display:flex;flex-direction:column;align-items:center;justify-content:center;cursor:pointer;position:relative;background:#fff}
 .upload-panel input{position:absolute;left:0;top:0;right:0;bottom:0;opacity:0;cursor:pointer}
