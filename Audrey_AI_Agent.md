@@ -1,4 +1,21 @@
-## Session Snapshot (2026-05-17)
+## Session Snapshot (2026-05-22)
+### Summary — End of day
+- Implemented inline validation and `Opslaan` in Kamerinstellingen; room name now updates live in the top bar.
+- Replaced invite-code alerts with inline success messages and improved modal styling/z-index.
+- Ensured `room-updated` emits so `App.vue` can refresh admin room lists.
+- Multiple UX polish items completed; remaining demo-critical tasks are listed below.
+
+### Tomorrow (start here)
+1. Smoke-test full demo flow locally (create room, invite, accept, open editor).
+2. Verify role-gating with test accounts so only co-editors can reach the editor.
+3. Add two demo GLB models to `public/models` and enable AssetPanel placement for demo.
+4. Replace critical `alert()` usages with a simple toast component for non-blocking UX.
+5. Finish visible Dutch translations and run a quick language pass.
+6. Prepare fallback screenshots and a 2–3 minute demo script.
+
+Confirmed: code changes saved in workspace; ready to continue tomorrow.
+
+## Previous Session Snapshot (2026-05-17)
 ### Recap — What we achieved last time
 - Week 1 MVP and media workflows: GLTFLoader/asset panel, object placement, Audio flow completed, Video flow started.
 - Week 2 core interaction slice implemented: click-to-select raycasting, selection inspector, delete handling.
@@ -51,6 +68,13 @@ This is the running log for the work we do in this project. I will keep it updat
 | 2026-05-04 | Compile the two .gitignore files into one and update the tracker accordingly. | Done | Merged memorial-space/.gitignore into the root .gitignore and removed the duplicate file. |
 | 2026-05-04 | Start week 1 project tasks and complete the first two tasks for today. | Done | Replaced the starter screen with a Three.js room scene, OrbitControls, lighting, and a responsive editor layout. |
 | 2026-05-05 | Review what was done yesterday, define today's work, and keep the tracker updates explicit. | Done | Added a yesterday recap, today's checklist, and a standing note to confirm tracker updates in chat. |
+| 2026-05-21 | Improve the admin pre-page room cards. | Done | Replaced the plain room list with cards, added masked invite code reveal, and tuned the alignment and spacing for a less cramped admin view. |
+| 2026-05-21 | Align the room card with the section title. | Done | Removed the centered card placement so the room card now starts under the heading instead of floating in the middle of the panel. |
+| 2026-05-21 | Remove the remaining left inset from the room card. | Done | Set the room card to full width so it now lines up with the heading edge instead of starting indented. |
+| 2026-05-21 | Refine admin topnav and room settings. | Done | Removed Save/Load from the top bar, added a visitor preview dropdown, moved Save/Load to the bottom-right dock, and simplified room settings with inline privacy/invite controls and a top-right Close × button. |
+| 2026-05-21 | Align topbar and Save/Load controls. | Done | Grouped Vloer aan, View as visitor, and Private together in the header and changed Save/Load to sit side-by-side in the bottom-right dock. |
+| 2026-05-21 | Simplify visitor preview toggle. | Done | Removed the visitor dropdown and changed the admin control to switch directly between View as visitor and Return to admin view. |
+| 2026-05-21 | Split co-editor and admin page controls. | Done | Co-editor now sees the simplified account menu and visitor mode label, while admin-only room controls stay behind admin checks for later admin-specific work. |
 | 2026-05-05 | Use the Figma screenshot as visual direction and begin replacing the placeholder look. | Done | Implemented first-pass Figma-inspired scene styling: isometric camera, pink room composition, tiled ground, top brand bar, and bottom action dock. |
 | 2026-05-05 | Remove Figma workspace framing from the page and adjust screen size feel. | Done | Removed outer gray framing effect by making the editor full-bleed and borderless around the scene shell. |
 | 2026-05-05 | Ensure Media/Msg/Candle buttons are visible without scrolling. | Done | Constrained the editor to viewport height and disabled shell overflow so the bottom action dock stays on-screen. |
@@ -195,6 +219,12 @@ This is the running log for the work we do in this project. I will keep it updat
   - Marked the Video UI task complete in the TODO list and started work on recording support.
 
 If you want, I can continue by wiring playback for placed audio cards, adding deletion/posting states, or persisting uploads to Supabase.
+
+## Recent Updates (2026-05-21)
+
+- Updated the admin pre-page with a card-based room layout instead of the plain list.
+- Added masked invite-code reveal behavior so the code stays hidden until clicked.
+- Tightened the spacing and width of the room card to better match the requested 80% sizing and reduce the cramped feel.
 
 ## Session Snapshot (2026-05-12)
 
