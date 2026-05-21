@@ -1,0 +1,73 @@
+<script setup>
+import { ref } from 'vue'
+const emit = defineEmits(['next'])
+const selected = ref(null)
+const maxSize = 200 * 1024 // 200 KB recommended
+
+const stock = [
+  '#f8c6d0','#ffd6a5','#caffbf','#9bf6ff','#bdb2ff','#ffc6ff','#cdb4db','#ffadad','#caffbf'
+]
+
+const pick = (c) => { selected.value = c }
+
+const onFile = async (e) => {
+  const f = e.target.files && e.target.files[0]
+  if (!f) return
+  if (f.size > maxSize) return alert('Bestand te groot, max 200KB')
+  const reader = new FileReader()
+  reader.onload = () => { selected.value = reader.result }
+  reader.readAsDataURL(f)
+}
+
+const submit = () => {
+  if (!selected.value) return alert('Kies een profielfoto of upload er een')
+  emit('next', selected.value)
+}
+</script>
+
+<template>
+  <div class="invite-wrap">
+    <div class="invite-card">
+        <div class="title">Kies uit onze galerij of upload zelf een foto</div>
+        <div class="invite-body">
+          <div class="stock-column" role="list" aria-label="Vooraf ingestelde profielfoto's">
+            <div class="stock-grid">
+              <div v-for="(c,i) in stock" :key="i" role="listitem">
+                <button type="button" @click="pick(c)" :class="['stock-item', selected === c ? 'selected' : '']" :style="{background:c}" :aria-pressed="selected===c" :aria-label="`Avatar optie ${i+1}`"></button>
+              </div>
+            </div>
+          </div>
+
+          <div class="upload-column">
+            <label class="upload-panel" for="avatar-upload">
+              <input id="avatar-upload" type="file" accept="image/*" @change="onFile" aria-label="Upload profielfoto" />
+              <div class="upload-graphic">📱</div>
+              <div class="upload-cta">Upload vanaf je apparaat</div>
+            </label>
+                 <div class="upload-note">Upload een foto van je smartphone of ander apparaat. Max. bestandsgrootte: 200KB.</div>
+          </div>
+        </div>
+
+
+        <div class="actions"><button class="invite-btn" @click="submit">Volgende</button></div>
+      </div>
+  </div>
+</template>
+
+<style scoped>
+.invite-wrap{min-height:60vh;display:flex;align-items:center;justify-content:center;padding:36px;background:linear-gradient(90deg,#fbf8fe 0%, #fff6f3 100%)}
+.invite-card{background:rgba(255,255,255,0.96);max-width:820px;padding:28px;border-radius:14px;box-shadow:0 14px 30px rgba(20,20,40,0.06);border:2px solid rgba(111,66,193,0.06);text-align:center}
+.title{margin-bottom:12px;color:#333}
+.invite-body{display:flex;gap:20px;align-items:flex-start;justify-content:center;margin-top:10px}
+.stock-column{flex:1;display:flex;align-items:center;justify-content:center}
+.stock-grid{display:grid;grid-template-columns:repeat(3,72px);grid-template-rows:repeat(3,72px);gap:14px}
+.stock-item{width:72px;height:72px;border-radius:50%;cursor:pointer;box-shadow:0 6px 12px rgba(0,0,0,0.04);border:2px solid rgba(0,0,0,0.02)}
+.stock-item.selected{box-shadow:0 10px 20px rgba(111,66,193,0.12);outline:4px solid rgba(111,66,193,0.12)}
+.upload-column{width:240px;display:flex;flex-direction:column;align-items:center;justify-content:center}
+.upload-panel{width:220px;height:140px;border-radius:12px;border:2px dashed #dcd6e8;display:flex;flex-direction:column;align-items:center;justify-content:center;cursor:pointer;position:relative;background:#fff}
+.upload-panel input{position:absolute;left:0;top:0;right:0;bottom:0;opacity:0;cursor:pointer}
+.upload-graphic{font-size:32px;margin-bottom:8px}
+.upload-cta{font-weight:600;color:#333}
+.upload-note{font-size:13px;color:#666;margin-top:10px;text-align:center;max-width:260px}
+.invite-btn{background:linear-gradient(180deg,#7b5fb8,#6f42c1);color:#fff;border:none;padding:12px 26px;border-radius:22px;font-weight:600;box-shadow:0 6px 18px rgba(111,66,193,0.12);cursor:pointer;margin-top:16px}
+</style>
