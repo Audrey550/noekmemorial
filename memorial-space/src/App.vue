@@ -95,7 +95,7 @@ const getInviteCode = (id) => {
 }
 
 const getInviteLabel = (room) => {
-  return room.privacy === 'private' ? 'Invite' : 'Invite (only for private rooms)'
+  return room.privacy === 'private' ? 'Uitnodiging' : 'Uitnodiging (alleen voor privékamers)'
 }
 
 onMounted(() => {
@@ -144,6 +144,15 @@ onMounted(() => {
         inviteStep.value = parseInt(stepParam) || 1
       }
       selectedRoomId.value = forceInvite
+      try {
+        const roomKey = `audreyRoom_${forceInvite}`
+        const rawRoom = localStorage.getItem(roomKey)
+        const roomMeta = rawRoom ? JSON.parse(rawRoom) : {}
+        if (!roomMeta.name) {
+          roomMeta.name = 'Lisa Pepper'
+          localStorage.setItem(roomKey, JSON.stringify(roomMeta))
+        }
+      } catch (e) {}
       if (authUser.value) {
         authUser.value.role = 'editor'
         try { localStorage.setItem('audreyUser', JSON.stringify(authUser.value)) } catch (e) {}
@@ -203,15 +212,49 @@ const logout = () => {
 }
 
 const createRoom = () => {
+  // open create-room modal instead of immediate creation
+  if (!authUser.value) return
+  showCreateRoomModal.value = true
+}
+
+const showCreateRoomModal = ref(false)
+const newRoomName = ref('')
+const newRoomPrivacy = ref('private')
+const newRoomInviteCode = ref(null)
+
+const generateInviteCodeForNewRoom = () => {
+  const code = `INV-${Math.random().toString(36).substring(2,8).toUpperCase()}`
+  newRoomInviteCode.value = code
+}
+
+const createRoomConfirmed = () => {
   if (!authUser.value) return
   const email = authUser.value.email
   const key = `audreyRooms_${email}`
   const id = `room_${Date.now()}`
-  const room = { id, name: `Room ${adminRooms.value.length + 1}`, privacy: 'private' }
+  const roomName = newRoomName.value && newRoomName.value.trim().length ? newRoomName.value.trim() : `Room ${adminRooms.value.length + 1}`
+  const room = { id, name: roomName, privacy: newRoomPrivacy.value }
   adminRooms.value.push(room)
   try { localStorage.setItem(key, JSON.stringify(adminRooms.value)) } catch (e) {}
+  // persist room meta (privacy, inviteCode, name)
+  try {
+    const meta = { privacy: newRoomPrivacy.value, inviteCode: newRoomInviteCode.value || null, name: roomName }
+    localStorage.setItem(`audreyRoom_${id}`, JSON.stringify(meta))
+  } catch (e) {}
   selectedRoomId.value = id
   showRoomList.value = false
+  showCreateRoomModal.value = false
+  // reset modal state
+  newRoomName.value = ''
+  newRoomPrivacy.value = 'private'
+  newRoomInviteCode.value = null
+}
+
+const cancelCreateRoom = () => {
+  showCreateRoomModal.value = false
+  newRoomName.value = ''
+  newRoomPrivacy.value = 'private'
+  newRoomInviteCode.value = null
 }
 
 const removeRoom = (id) => {
@@ -239,6 +282,23 @@ const updateUser = (u) => {
   authUser.value = u
   try { localStorage.setItem('audreyUser', JSON.stringify(u)) } catch (e) {}
 }
+
+const handleRoomUpdated = ({ id, name }) => {
+  if (!authUser.value) return
+  const email = authUser.value.email
+  const key = `audreyRooms_${email}`
+  let changed = false
+  adminRooms.value = adminRooms.value.map(r => {
+    if (r.id === id) {
+      changed = true
+      return { ...r, name }
+    }
+    return r
+  })
+  if (changed) {
+    try { localStorage.setItem(key, JSON.stringify(adminRooms.value)) } catch (e) {}
+  }
+}
 </script>
 
 <style scoped>
@@ -258,8 +318,53 @@ const updateUser = (u) => {
 .room-main{
   display:flex;align-items:flex-start;gap:16px;margin-top:10px
 }
-.room-preview{width:88px;height:64px;flex:0 0 88px}
-.preview-box{width:88px;height:64px;background:linear-gradient(135deg,#faf3f2,#f7f9fb);display:flex;align-items:center;justify-content:center;border-radius:6px;color:#777;font-size:12px}
+.room-preview{width:104px;height:78px;flex:0 0 104px}
+.preview-scene{
+  position:relative;width:100%;height:100%;border-radius:10px;
+  background:linear-gradient(180deg,#fef9fd 0%,#f8fbff 100%);
+  border:1px solid rgba(111,66,193,0.08);
+  overflow:hidden;
+  box-shadow:inset 0 0 0 1px rgba(255,255,255,0.6)
+}
+.preview-floor{
+  position:absolute;left:20%;right:16%;bottom:10%;height:34%;
+  transform:skewX(28deg) rotate(-28deg);
+  background:linear-gradient(180deg,#8d95a6,#717a8d);
+  border-radius:3px
+}
+.preview-wall{
+  position:absolute;background:#f4d7e4;border:1px solid rgba(160,120,170,0.2)
+}
+.preview-wall-left{left:16%;bottom:27%;width:30%;height:43%;transform:skewY(34deg)}
+.preview-wall-right{right:18%;bottom:27%;width:30%;height:43%;transform:skewY(-34deg)}
+.preview-rug{
+  position:absolute;left:41%;bottom:19%;width:20%;height:14%;transform:rotate(-24deg);
+  background:linear-gradient(180deg,#ff6ca6,#f03d8d);border-radius:4px
+}
+.preview-sofa{
+  position:absolute;width:18%;height:18%;bottom:22%;border-radius:4px 4px 3px 3px;
+  background:linear-gradient(180deg,#75d7df,#57c7cf);box-shadow:inset 0 -4px 0 rgba(0,0,0,0.08)
+}
+.preview-sofa::after{
+  content:'';position:absolute;left:18%;right:18%;top:18%;height:22%;border-radius:999px;background:#f7b7d8
+}
+.preview-sofa-left{left:17%}
+.preview-sofa-right{right:17%}
+.preview-desk{
+  position:absolute;right:24%;top:30%;width:22%;height:13%;border-radius:3px;
+  background:linear-gradient(180deg,#f4e5d3,#ecd9c2);transform:rotate(-12deg)
+}
+.preview-desk::after{
+  content:'';position:absolute;right:10%;top:-6px;width:26px;height:16px;border-radius:2px;background:#6fd9df;box-shadow:0 0 0 1px rgba(0,0,0,0.05)
+}
+.preview-window{
+  position:absolute;right:25%;top:9%;width:18%;height:28%;
+  background:linear-gradient(90deg,rgba(255,255,255,0.14),rgba(255,255,255,0.4));
+  border:1px solid rgba(244,180,203,0.35);border-top:0;border-bottom:0
+}
+.preview-pendant{
+  position:absolute;left:48%;top:8%;width:8px;height:22px;background:#d9b3c6;border-radius:999px
+}
 .room-body{flex:1;min-width:0;padding-top:2px}
 .room-name{font-weight:600;font-size:18px;line-height:1.2;margin-top:8px}
 .card-instruction{font-size:14px;color:#5b5b5b}
@@ -280,43 +385,84 @@ const updateUser = (u) => {
       <!-- top-right controls (avatar menu moved into SceneCanvas) -->
 
       <div v-if="authUser.role === 'admin' && showRoomList">
-        <div class="panel">
-          <div style="display:flex;justify-content:flex-end;margin-bottom:8px">
-            <button class="btn" @click="logout">Logout</button>
-          </div>
-          <h3>{{ (authUser.displayName ? authUser.displayName : (authUser.email ? authUser.email.split('@')[0] : 'Your')) + "'s Rooms" }}</h3>
+            <div class="panel">
+              <div style="display:flex;justify-content:flex-end;margin-bottom:8px">
+                <button class="btn" @click="logout">Uitloggen</button>
+              </div>
+              <h3 v-if="authUser.displayName">{{ 'Kamers van ' + authUser.displayName }}</h3>
+              <h3 v-else-if="authUser.email">{{ 'Kamers van ' + authUser.email.split('@')[0] }}</h3>
+              <h3 v-else>Uw kamers</h3>
 
-          <div class="room-grid">
-            <div v-for="r in adminRooms" :key="r.id" class="room-card">
-              <div class="card-instruction">Open to edit a room, delete it, or create a new one to start fresh.</div>
-              <div class="room-name">{{ r.name }}</div>
+              <div class="card-instruction">Open een kamer om te bewerken, verwijder deze of maak een nieuwe om opnieuw te beginnen.</div>
+
+              <div class="room-grid">
+                <div v-for="r in adminRooms" :key="r.id" class="room-card">
+                  <div class="room-name">{{ r.name }}</div>
               <div class="room-main">
                 <div class="room-preview" aria-hidden>
-                  <!-- placeholder preview; replace with thumbnail if available -->
-                  <div class="preview-box">Preview</div>
+                  <div class="preview-scene">
+                    <span class="preview-wall preview-wall-left"></span>
+                    <span class="preview-wall preview-wall-right"></span>
+                    <span class="preview-floor"></span>
+                    <span class="preview-rug"></span>
+                    <span class="preview-sofa preview-sofa-left"></span>
+                    <span class="preview-sofa preview-sofa-right"></span>
+                    <span class="preview-desk"></span>
+                    <span class="preview-window"></span>
+                    <span class="preview-pendant"></span>
+                  </div>
                 </div>
                 <div class="room-body">
-                  <div class="room-meta">Privacy: <strong>{{ r.privacy }}</strong></div>
+                  <div class="room-meta">Privacy: <strong>{{ r.privacy === 'private' ? 'Privé' : 'Openbaar' }}</strong></div>
                   <div class="room-invite">
                     {{ getInviteLabel(r) }}:
                     <button v-if="r.privacy === 'private' && getInviteCode(r.id)" class="invite-toggle" @click="toggleReveal(r.id)">
                       <span v-if="!revealed[r.id]">******</span>
                       <span v-else>{{ getInviteCode(r.id) }}</span>
                     </button>
-                    <span v-else-if="r.privacy === 'private'" class="invite-status">No active invite</span>
+                    <span v-else-if="r.privacy === 'private'" class="invite-status">Geen actieve uitnodiging</span>
                   </div>
                 </div>
               </div>
               <div class="room-actions">
-                <button class="btn" @click="openRoom(r.id)">Open</button>
-                <button class="btn" @click="removeRoom(r.id)">Delete</button>
+                <button class="btn" @click="openRoom(r.id)">Openen</button>
+                <button class="btn" @click="removeRoom(r.id)">Verwijderen</button>
               </div>
             </div>
           </div>
 
           <div style="margin-top:12px;display:flex;gap:8px">
-            <button class="btn" @click="createRoom">Create new room</button>
-            <button class="btn" @click="openFirst">Last opened</button>
+            <button class="btn" @click="createRoom">Nieuwe kamer</button>
+            <button class="btn" @click="openFirst">Laatst geopend</button>
+          </div>
+          
+          <div v-if="showCreateRoomModal" class="modal-backdrop" style="position:fixed;inset:0;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,0.5);z-index:10050;">
+            <div class="modal-card" style="width:520px;max-width:92%;padding:18px;z-index:10051;border-radius:12px;box-shadow:0 18px 40px rgba(0,0,0,0.3);background:#ffffff;color:#1a1a1a;">
+              <div style="display:flex;justify-content:space-between;align-items:center">
+                <h3>Nieuwe kamer maken</h3>
+              </div>
+
+              <div style="margin-top:12px;display:flex;flex-direction:column;gap:10px">
+                <label>Naam van kamer</label>
+                <input v-model="newRoomName" placeholder="Bijv. Herinneringen aan Oma" style="padding:8px;border-radius:8px;border:1px solid #e6e6ee" />
+
+                <div style="display:flex;gap:8px;align-items:center">
+                  <div style="font-weight:600">Privacy:</div>
+                  <label style="display:flex;align-items:center;gap:8px"><input type="radio" v-model="newRoomPrivacy" value="private" /> Privé</label>
+                  <label style="display:flex;align-items:center;gap:8px"><input type="radio" v-model="newRoomPrivacy" value="public" /> Openbaar</label>
+                </div>
+
+                <div v-if="newRoomPrivacy === 'private'" style="display:flex;gap:8px;align-items:center">
+                  <button class="btn" @click="generateInviteCodeForNewRoom">Genereer uitnodigingscode</button>
+                  <div style="font-size:13px;color:#333">{{ newRoomInviteCode ? ('Code: ' + newRoomInviteCode) : 'Nog geen code' }}</div>
+                </div>
+              </div>
+
+              <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:18px">
+                <button class="btn" @click="cancelCreateRoom">Annuleren</button>
+                <button class="btn" @click="createRoomConfirmed">Maak aan</button>
+              </div>
+            </div>
           </div>
         </div>
       </div>
@@ -330,7 +476,7 @@ const updateUser = (u) => {
           <InviteLoading v-else-if="inviteStep === 4" :roomName="getRoomMeta(selectedRoomId).name || ''" @finished="handleFinished" />
         </div>
 
-        <SceneCanvas v-else :currentUser="authUser" :roomId="selectedRoomId" @logout="logout" @update-user="updateUser" @room-deleted="removeRoom" />
+        <SceneCanvas v-else :currentUser="authUser" :roomId="selectedRoomId" @logout="logout" @update-user="updateUser" @room-deleted="removeRoom" @room-updated="handleRoomUpdated" />
       </div>
     </div>
   </div>
