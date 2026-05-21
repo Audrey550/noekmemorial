@@ -14,6 +14,9 @@ const canvasRef = ref(null)
 const username = ref('Naam')
 const roomPrivacy = ref('private')
 const roomInviteCode = ref(null)
+const roomName = ref('')
+const roomSettingsError = ref('')
+const roomSettingsSuccess = ref('')
 const roomMembers = ref([])
 const inviteEmail = ref('')
 const inviteRole = ref('editor')
@@ -46,14 +49,14 @@ const setVisitorPreviewMode = (enabled) => {
 
 const visitorButtonLabel = computed(() => {
   if (visitorPreviewMode.value) {
-    return props.currentUser?.role === 'editor' ? 'Return to co-editor mode' : 'Return to admin view'
+    return props.currentUser?.role === 'editor' ? 'Terug naar co-editor modus' : 'Terug naar admin weergave'
   }
 
-  return 'View as visitor'
+  return 'Bekijk als bezoeker'
 })
 
 const accountSettingsLabel = computed(() => {
-  return props.currentUser?.role === 'editor' ? 'Account settings' : 'Admin settings'
+  return props.currentUser?.role === 'editor' ? 'Accountinstellingen' : 'Beheerdersinstellingen'
 })
 
 watch(() => props.currentUser, (nu) => {
@@ -63,6 +66,12 @@ watch(() => props.currentUser, (nu) => {
 watch(() => props.roomId, () => {
   loadRoomMeta()
   loadRoomMembers()
+})
+
+// clear inline feedback when name changes
+watch(roomName, () => {
+  roomSettingsError.value = ''
+  roomSettingsSuccess.value = ''
 })
 const sceneObjects = ref([])
 const showQuickPanel = ref(false)
@@ -142,13 +151,16 @@ const loadRoomMeta = () => {
       const data = JSON.parse(stored)
       roomPrivacy.value = data.privacy || 'private'
       roomInviteCode.value = data.inviteCode || null
+      roomName.value = data.name || ''
     } else {
       roomPrivacy.value = 'private'
       roomInviteCode.value = null
+      roomName.value = ''
     }
   } catch (e) {
     roomPrivacy.value = 'private'
     roomInviteCode.value = null
+    roomName.value = ''
   }
 
   // load members
@@ -165,17 +177,20 @@ const loadRoomMeta = () => {
 const saveRoomMeta = () => {
   const id = props.roomId || 'default'
   try {
-    localStorage.setItem(`audreyRoom_${id}`, JSON.stringify({ privacy: roomPrivacy.value, inviteCode: roomInviteCode.value }))
+    localStorage.setItem(`audreyRoom_${id}`, JSON.stringify({ privacy: roomPrivacy.value, inviteCode: roomInviteCode.value, name: roomName.value }))
   } catch (e) {}
   try {
     localStorage.setItem(`audreyRoomMembers_${id}`, JSON.stringify(roomMembers.value))
   } catch (e) {}
 
+  // notify parent that room metadata changed (e.g., name)
+  try { emit('room-updated', { id, name: roomName.value }) } catch (e) {}
+
 }
 
 const toggleRoomPrivacy = () => {
   if (!props.currentUser || effectiveRole.value !== 'admin') {
-    alert('Only the room owner can change privacy (demo).')
+    alert('Alleen de eigenaar van de kamer kan de privacy wijzigen (demo).')
     return
   }
   roomPrivacy.value = roomPrivacy.value === 'private' ? 'public' : 'private'
@@ -184,13 +199,15 @@ const toggleRoomPrivacy = () => {
 
 const generateInviteCode = () => {
   if (!props.currentUser || effectiveRole.value !== 'admin') {
-    alert('Only the room owner can generate invite codes (demo).')
+    alert('Alleen de eigenaar van de kamer kan uitnodigingscodes genereren (demo).')
     return
   }
   const code = `INV-${Math.random().toString(36).substring(2,8).toUpperCase()}`
   roomInviteCode.value = code
   saveRoomMeta()
-  alert(`Invite code generated: ${code}`)
+  // show inline success message in room settings modal
+  roomSettingsSuccess.value = `Uitnodigingscode gegenereerd: ${code}`
+  roomSettingsError.value = ''
 }
 
 const loadRoomMembers = () => {
@@ -211,7 +228,7 @@ const saveRoomMembers = () => {
 }
 
 const inviteMember = () => {
-  if (!inviteEmail.value) return alert('Please provide an email to invite')
+  if (!inviteEmail.value) return alert('Geef een e-mailadres op om uit te nodigen')
   const id = `m_${Date.now()}`
   const member = { id, email: inviteEmail.value.trim(), role: inviteRole.value || 'editor', status: 'invited' }
   roomMembers.value.push(member)
@@ -223,7 +240,7 @@ const inviteMember = () => {
 }
 
 const removeMember = (id) => {
-  if (!confirm('Remove this member from the room?')) return
+  if (!confirm('Dit lid verwijderen uit de kamer?')) return
   const removed = roomMembers.value.find(m => m.id === id)
   roomMembers.value = roomMembers.value.filter(m => m.id !== id)
   saveRoomMembers()
@@ -242,7 +259,7 @@ const deleteRoom = () => {
   // require typed confirmation of room id or DELETE
   const id = props.roomId || 'default'
   if (!deleteConfirmText.value || deleteConfirmText.value !== 'DELETE') {
-    return alert('Type DELETE in the confirmation box to confirm room deletion')
+    return alert("Typ DELETE in het bevestigingsvak om het verwijderen van de kamer te bevestigen")
   }
   try {
     localStorage.removeItem(`audreyRoom_${id}`)
@@ -251,7 +268,7 @@ const deleteRoom = () => {
   try { logEvent('room.deleted', { roomId: id }) } catch (e) {}
   showRoomSettingsModal.value = false
   emit('room-deleted', id)
-  alert('Room deleted (demo).')
+  alert('Kamer verwijderd (demo).')
 }
 
 // Deserialize scene state from JSON and rebuild scene
@@ -338,10 +355,10 @@ const saveSceneToStorage = () => {
     const serialized = serializeSceneState()
     localStorage.setItem('memorialScene', serialized)
     try { logEvent('scene.saved', { objectCount: sceneObjects.value.length }) } catch (e) {}
-    alert('Scene saved successfully!')
+    alert('Scène succesvol opgeslagen!')
   } catch (error) {
     console.error('Failed to save scene:', error)
-    alert('Failed to save scene')
+    alert('Opslaan van scène is mislukt')
   }
 }
 
@@ -350,15 +367,15 @@ const loadSceneFromStorage = async () => {
   try {
     const stored = localStorage.getItem('memorialScene')
     if (!stored) {
-      alert('No saved scene found')
+      alert('Geen opgeslagen scène gevonden')
       return
     }
     const success = await deserializeSceneState(stored)
     if (success) {
       try { logEvent('scene.loaded', { objectCount: sceneObjects.value.length }) } catch (e) {}
-      alert('Scene loaded successfully!')
+      alert('Scène succesvol geladen!')
     } else {
-      alert('Failed to load scene')
+      alert('Laden van scène is mislukt')
     }
   } catch (error) {
     console.error('Failed to load scene:', error)
@@ -383,7 +400,7 @@ const closeQuickPanel = () => {
 const handlePlacePhoto = (photoData) => {
   if (!scene || !room) return
   if (props.currentUser && props.currentUser.role === 'viewer') {
-    alert('View-only users cannot add objects (demo).')
+    alert('Gebruikers met alleen-weergave kunnen geen objecten toevoegen (demo).')
     return
   }
 
@@ -393,7 +410,7 @@ const handlePlacePhoto = (photoData) => {
 const handlePlaceAudio = (audioData) => {
   if (!scene || !room) return
   if (props.currentUser && props.currentUser.role === 'viewer') {
-    alert('View-only users cannot add objects (demo).')
+    alert('Gebruikers met alleen-weergave kunnen geen objecten toevoegen (demo).')
     return
   }
   placeAudioInRoom(audioData)
@@ -402,7 +419,7 @@ const handlePlaceAudio = (audioData) => {
 const handlePlaceVideo = (videoData) => {
   if (!scene || !room) return
   if (props.currentUser && props.currentUser.role === 'viewer') {
-    alert('View-only users cannot add objects (demo).')
+    alert('Gebruikers met alleen-weergave kunnen geen objecten toevoegen (demo).')
     return
   }
   placeVideoInRoom(videoData)
@@ -605,6 +622,19 @@ const saveAdminSettings = () => {
     }
   } catch (e) {}
   showAdminSettingsModal.value = false
+}
+
+const saveRoomSettings = () => {
+  // simple validation: room name should not be empty
+  roomSettingsError.value = ''
+  roomSettingsSuccess.value = ''
+  if (!roomName.value || !roomName.value.trim()) {
+    roomSettingsError.value = 'Geef een naam op voor de kamer.'
+    return
+  }
+  // persist meta (privacy, inviteCode, name) and notify parent
+  saveRoomMeta()
+  roomSettingsSuccess.value = 'Kamerinstellingen opgeslagen.'
 }
 
 const handleDocumentClick = (event) => {
@@ -1323,7 +1353,7 @@ onBeforeUnmount(() => {
           type="button"
           class="floor-toggle"
           :aria-pressed="showFloor"
-          :title="showFloor ? 'Hide floor' : 'Show floor'"
+          :title="showFloor ? 'Verberg vloer' : 'Toon vloer'"
           @click="toggleFloorVisibility"
         >
           {{ showFloor ? 'Vloer aan' : 'Vloer uit' }}
@@ -1333,15 +1363,17 @@ onBeforeUnmount(() => {
           v-if="props.currentUser && (props.currentUser.role === 'admin' || props.currentUser.role === 'editor')"
           type="button"
           class="floor-toggle"
-          :title="visitorPreviewMode ? 'Return to editor mode' : 'Visitor preview'"
+          :title="visitorPreviewMode ? 'Terug naar bewerkmodus' : 'Voorvertoning bezoeker'"
           @click="setVisitorPreviewMode(!visitorPreviewMode)"
         >
           {{ visitorButtonLabel }}
         </button>
 
-        <button v-if="props.currentUser && props.currentUser.role === 'admin'" type="button" class="floor-toggle" title="Toggle room privacy" @click="toggleRoomPrivacy">
-          {{ roomPrivacy === 'private' ? 'Private' : 'Public' }}
+        <button v-if="props.currentUser && props.currentUser.role === 'admin'" type="button" class="floor-toggle" title="Schakel privacy van kamer" @click="toggleRoomPrivacy">
+          {{ roomPrivacy === 'private' ? 'Privé' : 'Openbaar' }}
         </button>
+
+        <div style="margin-left:12px;font-weight:700;font-size:16px;color:#1a1a1a">{{ roomName || 'Onbekende kamer' }}</div>
       </div>
 
       <div class="profile-area">
@@ -1353,21 +1385,21 @@ onBeforeUnmount(() => {
             :style="{ backgroundImage: props.currentUser && props.currentUser.avatar ? `url(${props.currentUser.avatar})` : undefined, backgroundSize: 'cover' }"
             aria-haspopup="menu"
             :aria-expanded="showProfileMenu"
-            aria-label="Open profile menu"
-            title="Open profile menu"
+            aria-label="Open profielmenu"
+            title="Open profielmenu"
             @click="toggleProfileMenu"
             @keydown.enter.prevent="openProfileMenu"
             @keydown.space.prevent="openProfileMenu"
           ></button>
 
-          <transition name="profile-fade">
-            <div v-if="showProfileMenu" class="profile-menu" role="menu" aria-label="Profile options">
+            <transition name="profile-fade">
+            <div v-if="showProfileMenu" class="profile-menu" role="menu" aria-label="Profielopties">
               <template v-if="props.currentUser && props.currentUser.role === 'admin'">
                 <button type="button" class="profile-menu-item" role="menuitem" @click="openAdminSettings">
                   {{ accountSettingsLabel }}
                 </button>
                 <button type="button" class="profile-menu-item" role="menuitem" @click="openRoomSettings">
-                  Room settings
+                  Kamerinstellingen
                 </button>
               </template>
               <template v-else>
@@ -1376,7 +1408,7 @@ onBeforeUnmount(() => {
                 </button>
               </template>
               <button type="button" class="profile-menu-item" role="menuitem" @click="handleLogout($event)" @mousedown.stop.prevent="handleLogout($event)" tabindex="0">
-                Logout
+                Uitloggen
               </button>
             </div>
           </transition>
@@ -1387,19 +1419,19 @@ onBeforeUnmount(() => {
     
 
     <section class="scene-stage">
-      <canvas ref="canvasRef" class="scene-canvas" aria-label="Memorial space 3D scene"></canvas>
+      <canvas ref="canvasRef" class="scene-canvas" aria-label="3D herdenkingsruimte"></canvas>
 
-      <nav v-if="effectiveRole !== 'viewer'" class="action-dock" aria-label="Quick actions">
+      <nav v-if="effectiveRole !== 'viewer'" class="action-dock" aria-label="Snelle acties">
         <button type="button" class="dock-button" :class="{ active: showQuickPanel && activePanel === 'media' }" @click="openQuickPanel('media')">
           <span class="dock-icon">+</span>
           <span class="dock-label">Media</span>
         </button>
         <button type="button" class="dock-button" :class="{ active: showQuickPanel && activePanel === 'messages' }" @click="openQuickPanel('messages')">
-          <span class="dock-icon">Msg</span>
+          <span class="dock-icon">✉</span>
           <span class="dock-label">Berichten</span>
         </button>
         <button type="button" class="dock-button" :class="{ active: showQuickPanel && activePanel === 'family' }" @click="openQuickPanel('family')">
-          <span class="dock-icon">Fam</span>
+          <span class="dock-icon">🕯️</span>
           <span class="dock-label">Kaarsje</span>
         </button>
       </nav>
@@ -1436,65 +1468,65 @@ onBeforeUnmount(() => {
         </div>
 
           <div v-if="!hideDeleteHint" class="selection-hint">
-            <span>Druk op de Delete-knop om het geselecteerde object te verwijderen</span>
+            <span>Druk op de Delete-toets om het geselecteerde object te verwijderen</span>
             <button type="button" class="selection-hint-close" @click="dismissDeleteHint" aria-label="Sluit hint">×</button>
           </div>
 
         <div class="selection-controls">
           <div class="control-group">
-            <div class="control-label">Move</div>
+            <div class="control-label">Verplaatsen</div>
             <div class="control-grid move-grid">
               <button type="button" class="selection-icon-button" title="Forward" @click="applyTransformToSelectedObject({ moveZ: -transformStep })">
                 <span class="icon">↑</span>
-                <span class="label">Forward</span>
+                <span class="label">Vooruit</span>
               </button>
               <button type="button" class="selection-icon-button" title="Backward" @click="applyTransformToSelectedObject({ moveZ: transformStep })">
                 <span class="icon">↓</span>
-                <span class="label">Back</span>
+                <span class="label">Achteruit</span>
               </button>
               <button type="button" class="selection-icon-button" title="Left" @click="applyTransformToSelectedObject({ moveX: -transformStep })">
                 <span class="icon">←</span>
-                <span class="label">Left</span>
+                <span class="label">Links</span>
               </button>
               <button type="button" class="selection-icon-button" title="Right" @click="applyTransformToSelectedObject({ moveX: transformStep })">
                 <span class="icon">→</span>
-                <span class="label">Right</span>
+                <span class="label">Rechts</span>
               </button>
               <button type="button" class="selection-icon-button" title="Up" @click="applyTransformToSelectedObject({ moveY: transformStep })">
                 <span class="icon">⬆</span>
-                <span class="label">Up</span>
+                <span class="label">Omhoog</span>
               </button>
               <button type="button" class="selection-icon-button" title="Down" @click="applyTransformToSelectedObject({ moveY: -transformStep })">
                 <span class="icon">⬇</span>
-                <span class="label">Down</span>
+                <span class="label">Omlaag</span>
               </button>
             </div>
           </div>
 
           <div class="control-group">
-            <div class="control-label">Rotate</div>
+            <div class="control-label">Rotatie</div>
             <div class="control-grid rotate-grid">
               <button type="button" class="selection-icon-button" title="Rotate Left" @click="applyTransformToSelectedObject({ rotateY: -rotateStep })">
                 <span class="icon">↶</span>
-                <span class="label">Left</span>
+                <span class="label">Links</span>
               </button>
               <button type="button" class="selection-icon-button" title="Rotate Right" @click="applyTransformToSelectedObject({ rotateY: rotateStep })">
                 <span class="icon">↷</span>
-                <span class="label">Right</span>
+                <span class="label">Rechts</span>
               </button>
             </div>
           </div>
 
           <div class="control-group">
-            <div class="control-label">Scale</div>
+            <div class="control-label">Schaal</div>
             <div class="control-grid scale-grid">
               <button type="button" class="selection-icon-button" title="Shrink" @click="applyTransformToSelectedObject({ scaleAdjust: -scaleStep })">
                 <span class="icon">⊖</span>
-                <span class="label">Smaller</span>
+                <span class="label">Kleiner</span>
               </button>
               <button type="button" class="selection-icon-button" title="Enlarge" @click="applyTransformToSelectedObject({ scaleAdjust: scaleStep })">
                 <span class="icon">⊕</span>
-                <span class="label">Larger</span>
+                <span class="label">Groter</span>
               </button>
             </div>
           </div>
@@ -1507,24 +1539,24 @@ onBeforeUnmount(() => {
         </div>
       </aside>
 
-      <nav v-if="effectiveRole !== 'viewer'" class="scene-storage-dock" aria-label="Scene storage actions">
+      <nav v-if="effectiveRole !== 'viewer'" class="scene-storage-dock" aria-label="Scène opslag acties">
         <button
           type="button"
           class="dock-button"
-          title="Save scene to local storage"
+          title="Sla scène op in lokale opslag"
           @click="saveSceneToStorage"
         >
           <span class="dock-icon">💾</span>
-          <span class="dock-label">Save</span>
+          <span class="dock-label">Opslaan</span>
         </button>
         <button
           type="button"
           class="dock-button"
-          title="Load scene from local storage"
+          title="Laad scène uit lokale opslag"
           @click="loadSceneFromStorage"
         >
           <span class="dock-icon">📂</span>
-          <span class="dock-label">Load</span>
+          <span class="dock-label">Laden</span>
         </button>
       </nav>
 
@@ -1532,23 +1564,40 @@ onBeforeUnmount(() => {
       <div v-if="showRoomSettingsModal" class="modal-backdrop" role="dialog" aria-modal="true">
         <div class="modal-card">
           <div class="modal-card-header">
-            <h3>Room settings</h3>
-            <button type="button" class="modal-close-button" @click="showRoomSettingsModal = false">Close ×</button>
+            <h3>Kamerinstellingen</h3>
+            <div style="display:flex;gap:8px">
+              <button type="button" class="modal-close-button" @click="saveRoomSettings" style="background:#6c5ce7;color:#fff;border:none">Opslaan</button>
+              <button type="button" class="modal-close-button" @click="showRoomSettingsModal = false">Sluiten ×</button>
+            </div>
           </div>
 
           <div class="room-settings-row">
-            <div class="room-settings-label">Privacy</div>
-            <button @click="toggleRoomPrivacy" class="room-setting-pill">{{ roomPrivacy === 'private' ? 'Private' : 'Public' }}</button>
-            <button v-if="roomPrivacy === 'private'" @click="generateInviteCode" class="room-invite-button">
-              {{ roomInviteCode ? 'Regenerate invite code' : 'Generate invite code' }}
-            </button>
+            <div style="display:flex;flex-direction:column;flex:1;gap:8px">
+              <div style="display:flex;align-items:center;gap:12px">
+                <div class="room-settings-label">Naam van kamer</div>
+                <input v-model="roomName" placeholder="Naam van kamer" style="flex:1;padding:8px;border-radius:8px;border:1px solid #e6e6ee" />
+              </div>
+
+              <div style="min-height:20px">
+                <div v-if="roomSettingsError" class="room-settings-error">{{ roomSettingsError }}</div>
+                <div v-if="roomSettingsSuccess" class="room-settings-success">{{ roomSettingsSuccess }}</div>
+              </div>
+
+              <div style="display:flex;align-items:center;gap:8px">
+                <div class="room-settings-label">Privacy</div>
+                <button @click="toggleRoomPrivacy" class="room-setting-pill">{{ roomPrivacy === 'private' ? 'Privé' : 'Openbaar' }}</button>
+                <button v-if="roomPrivacy === 'private'" @click="generateInviteCode" class="room-invite-button">
+                  {{ roomInviteCode ? 'Genereer opnieuw' : 'Genereer uitnodigingscode' }}
+                </button>
+              </div>
+            </div>
           </div>
 
           <p class="room-settings-help" v-if="roomPrivacy === 'private'">
-            This code is used to invite members to this private room.
+            Deze code wordt gebruikt om leden uit te nodigen voor deze privékamer.
           </p>
           <p class="room-settings-help" v-else>
-            Invite codes are only available for private rooms.
+            Uitnodigingscodes zijn alleen beschikbaar voor privékamers.
           </p>
 
           <div v-if="roomInviteCode && roomPrivacy === 'private'" class="room-invite-code">
@@ -1556,27 +1605,27 @@ onBeforeUnmount(() => {
           </div>
 
           <hr />
-          <h4 style="margin-top:12px">Members</h4>
+          <h4 style="margin-top:12px">Leden</h4>
           <div style="display:flex;gap:8px;margin-top:8px;align-items:center">
-            <input v-model="inviteEmail" placeholder="email@example.com" style="flex:1;padding:8px;border-radius:8px;border:1px solid #e6e6ee" />
+            <input v-model="inviteEmail" placeholder="naam@voorbeeld.com" style="flex:1;padding:8px;border-radius:8px;border:1px solid #e6e6ee" />
             <select v-model="inviteRole" style="padding:8px;border-radius:8px;border:1px solid #e6e6ee">
-              <option value="editor">Editor</option>
-              <option value="viewer">Viewer</option>
+              <option value="editor">Bewerker</option>
+              <option value="viewer">Kijker</option>
             </select>
-            <button @click="inviteMember" style="padding:8px 10px;border-radius:8px">Invite</button>
+            <button @click="inviteMember" style="padding:8px 10px;border-radius:8px">Nodig uit</button>
           </div>
 
           <div style="max-height:160px;overflow:auto;margin-top:12px">
-            <div v-if="!roomMembers.length">No members yet.</div>
+            <div v-if="!roomMembers.length">Nog geen leden.</div>
             <ul v-else style="list-style:none;padding:0;margin:0">
               <li v-for="m in roomMembers" :key="m.id" style="display:flex;justify-content:space-between;align-items:center;padding:8px;border-bottom:1px solid #f2f2f2">
                 <div style="display:flex;flex-direction:column">
                   <strong>{{ m.email }}</strong>
-                  <small style="color:#666">Role: {{ m.role }} • Status: {{ m.status }}</small>
+                  <small style="color:#666">Rol: {{ m.role }} • Status: {{ m.status }}</small>
                 </div>
                 <div style="display:flex;gap:8px">
-                  <button @click="toggleBlockMember(m.id)" style="padding:6px;border-radius:8px">{{ m.status === 'blocked' ? 'Unblock' : 'Block' }}</button>
-                  <button @click="removeMember(m.id)" style="padding:6px;border-radius:8px">Remove</button>
+                  <button @click="toggleBlockMember(m.id)" style="padding:6px;border-radius:8px">{{ m.status === 'blocked' ? 'Deblokkeren' : 'Blokkeren' }}</button>
+                  <button @click="removeMember(m.id)" style="padding:6px;border-radius:8px">Verwijderen</button>
                 </div>
               </li>
             </ul>
@@ -1584,11 +1633,11 @@ onBeforeUnmount(() => {
 
           <hr />
           <div style="margin-top:12px">
-            <h4>Danger zone</h4>
-            <div style="font-size:13px;color:#666;margin-top:6px">Deleting the room will remove its metadata and members (demo only).</div>
+            <h4>Gevaarlijke zone</h4>
+            <div style="font-size:13px;color:#666;margin-top:6px">Het verwijderen van de kamer verwijdert metadata en leden (alleen demo).</div>
             <div style="margin-top:8px;display:flex;gap:8px;align-items:center">
-              <input v-model="deleteConfirmText" placeholder="Type DELETE to confirm" style="flex:1;padding:8px;border-radius:8px;border:1px solid #e6e6ee" />
-              <button @click="deleteRoom" style="padding:8px 12px;border-radius:8px;background:#ff6b6b;color:#fff;border:none">Delete room</button>
+              <input v-model="deleteConfirmText" placeholder="Typ DELETE om te bevestigen" style="flex:1;padding:8px;border-radius:8px;border:1px solid #e6e6ee" />
+              <button @click="deleteRoom" style="padding:8px 12px;border-radius:8px;background:#ff6b6b;color:#fff;border:none">Verwijder kamer</button>
             </div>
           </div>
 
@@ -1598,14 +1647,14 @@ onBeforeUnmount(() => {
       <!-- Admin Settings Modal (placeholder) -->
       <div v-if="showAdminSettingsModal" class="modal-backdrop" role="dialog" aria-modal="true">
         <div class="modal-card">
-          <h3>Admin settings</h3>
+          <h3>Beheerdersinstellingen</h3>
           <div style="display:flex;align-items:center;gap:12px;margin-top:12px">
             <div style="width:56px;height:56px;border-radius:28px;overflow:hidden;background:#ddd">
               <img v-if="props.currentUser && props.currentUser.avatar" :src="props.currentUser.avatar" style="width:100%;height:100%;object-fit:cover" />
             </div>
             <div>
               <div style="font-weight:700">{{ props.currentUser ? props.currentUser.email : username }}</div>
-              <div style="font-size:13px;color:#666">Role: {{ props.currentUser ? props.currentUser.role : 'viewer' }}</div>
+              <div style="font-size:13px;color:#666">Rol: {{ props.currentUser ? props.currentUser.role : 'viewer' }}</div>
             </div>
           </div>
 
@@ -1615,8 +1664,8 @@ onBeforeUnmount(() => {
           </div>
 
           <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:18px">
-            <button @click="showAdminSettingsModal = false" style="padding:8px 12px;border-radius:8px">Cancel</button>
-            <button @click="saveAdminSettings" style="padding:8px 12px;border-radius:8px;background:#6c5ce7;color:#fff;border:none">Save</button>
+            <button @click="showAdminSettingsModal = false" style="padding:8px 12px;border-radius:8px">Annuleren</button>
+            <button @click="saveAdminSettings" style="padding:8px 12px;border-radius:8px;background:#6c5ce7;color:#fff;border:none">Opslaan</button>
           </div>
         </div>
       </div>
@@ -1815,6 +1864,18 @@ onBeforeUnmount(() => {
   font-size: 15px;
   font-weight: 600;
   color: #333;
+}
+
+.room-settings-error {
+  color: #d9534f;
+  font-size: 13px;
+  margin-top: 6px;
+}
+
+.room-settings-success {
+  color: #28a745;
+  font-size: 13px;
+  margin-top: 6px;
 }
 
 .room-setting-pill,
