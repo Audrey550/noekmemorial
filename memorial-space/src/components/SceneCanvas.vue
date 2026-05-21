@@ -1,5 +1,5 @@
 <script setup>
-import { onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 const emit = defineEmits(['logout', 'update-user', 'room-deleted'])
 import * as THREE from 'three'
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js'
@@ -21,11 +21,40 @@ const deleteConfirmText = ref('')
 const showRoomSettingsModal = ref(false)
 const showAdminSettingsModal = ref(false)
 const editDisplayName = ref('')
+const visitorPreviewMode = ref(false)
 
 // initialize username from current user when available
 if (props.currentUser && props.currentUser.displayName) {
   username.value = props.currentUser.displayName
 }
+
+const effectiveRole = computed(() => {
+  if (visitorPreviewMode.value && (props.currentUser?.role === 'admin' || props.currentUser?.role === 'editor')) {
+    return 'viewer'
+  }
+
+  return props.currentUser?.role || 'viewer'
+})
+
+const setVisitorPreviewMode = (enabled) => {
+  visitorPreviewMode.value = enabled
+  showQuickPanel.value = false
+  showRoomSettingsModal.value = false
+  showAdminSettingsModal.value = false
+  clearSceneSelection()
+}
+
+const visitorButtonLabel = computed(() => {
+  if (visitorPreviewMode.value) {
+    return props.currentUser?.role === 'editor' ? 'Return to co-editor mode' : 'Return to admin view'
+  }
+
+  return 'View as visitor'
+})
+
+const accountSettingsLabel = computed(() => {
+  return props.currentUser?.role === 'editor' ? 'Account settings' : 'Admin settings'
+})
 
 watch(() => props.currentUser, (nu) => {
   if (nu && nu.displayName) username.value = nu.displayName
@@ -145,7 +174,7 @@ const saveRoomMeta = () => {
 }
 
 const toggleRoomPrivacy = () => {
-  if (!props.currentUser || props.currentUser.role !== 'admin') {
+  if (!props.currentUser || effectiveRole.value !== 'admin') {
     alert('Only the room owner can change privacy (demo).')
     return
   }
@@ -154,7 +183,7 @@ const toggleRoomPrivacy = () => {
 }
 
 const generateInviteCode = () => {
-  if (!props.currentUser || props.currentUser.role !== 'admin') {
+  if (!props.currentUser || effectiveRole.value !== 'admin') {
     alert('Only the room owner can generate invite codes (demo).')
     return
   }
@@ -1289,41 +1318,31 @@ onBeforeUnmount(() => {
         <span>BRAND</span>
       </div>
 
-      <button
-        type="button"
-        class="floor-toggle"
-        :aria-pressed="showFloor"
-        :title="showFloor ? 'Hide floor' : 'Show floor'"
-        @click="toggleFloorVisibility"
-      >
-        {{ showFloor ? 'Vloer aan' : 'Vloer uit' }}
-      </button>
+      <div class="top-bar-controls">
+        <button
+          type="button"
+          class="floor-toggle"
+          :aria-pressed="showFloor"
+          :title="showFloor ? 'Hide floor' : 'Show floor'"
+          @click="toggleFloorVisibility"
+        >
+          {{ showFloor ? 'Vloer aan' : 'Vloer uit' }}
+        </button>
 
-      <button
-        type="button"
-        class="floor-toggle"
-        title="Save scene to local storage"
-        @click="saveSceneToStorage"
-      >
-        💾 Save
-      </button>
+        <button
+          v-if="props.currentUser && (props.currentUser.role === 'admin' || props.currentUser.role === 'editor')"
+          type="button"
+          class="floor-toggle"
+          :title="visitorPreviewMode ? 'Return to editor mode' : 'Visitor preview'"
+          @click="setVisitorPreviewMode(!visitorPreviewMode)"
+        >
+          {{ visitorButtonLabel }}
+        </button>
 
-      <button
-        type="button"
-        class="floor-toggle"
-        title="Load scene from local storage"
-        @click="loadSceneFromStorage"
-      >
-        📂 Load
-      </button>
-
-      <button v-if="props.currentUser && props.currentUser.role === 'admin'" type="button" class="floor-toggle" title="Toggle room privacy" @click="toggleRoomPrivacy">
-        {{ roomPrivacy === 'private' ? 'Private' : 'Public' }}
-      </button>
-
-      <button v-if="props.currentUser && props.currentUser.role === 'admin'" type="button" class="floor-toggle" title="Generate invite code" @click="generateInviteCode">
-        {{ roomInviteCode ? roomInviteCode : 'Generate invite' }}
-      </button>
+        <button v-if="props.currentUser && props.currentUser.role === 'admin'" type="button" class="floor-toggle" title="Toggle room privacy" @click="toggleRoomPrivacy">
+          {{ roomPrivacy === 'private' ? 'Private' : 'Public' }}
+        </button>
+      </div>
 
       <div class="profile-area">
         <span class="profile-name">{{ username }}</span>
@@ -1341,27 +1360,36 @@ onBeforeUnmount(() => {
             @keydown.space.prevent="openProfileMenu"
           ></button>
 
-          <div v-if="showProfileMenu" class="profile-menu" role="menu" aria-label="Profile options">
-            <template v-if="props.currentUser && props.currentUser.role === 'admin'">
-              <button type="button" class="profile-menu-item" role="menuitem" @click="openAdminSettings">
-                Admin settings
+          <transition name="profile-fade">
+            <div v-if="showProfileMenu" class="profile-menu" role="menu" aria-label="Profile options">
+              <template v-if="props.currentUser && props.currentUser.role === 'admin'">
+                <button type="button" class="profile-menu-item" role="menuitem" @click="openAdminSettings">
+                  {{ accountSettingsLabel }}
+                </button>
+                <button type="button" class="profile-menu-item" role="menuitem" @click="openRoomSettings">
+                  Room settings
+                </button>
+              </template>
+              <template v-else>
+                <button type="button" class="profile-menu-item" role="menuitem" @click="openAdminSettings">
+                  {{ accountSettingsLabel }}
+                </button>
+              </template>
+              <button type="button" class="profile-menu-item" role="menuitem" @click="handleLogout($event)" @mousedown.stop.prevent="handleLogout($event)" tabindex="0">
+                Logout
               </button>
-              <button type="button" class="profile-menu-item" role="menuitem" @click="openRoomSettings">
-                Room settings
-              </button>
-            </template>
-            <button type="button" class="profile-menu-item" role="menuitem" @click="handleLogout($event)" @mousedown.stop.prevent="handleLogout($event)" tabindex="0">
-              Logout
-            </button>
-          </div>
+            </div>
+          </transition>
         </div>
       </div>
     </header>
 
+    
+
     <section class="scene-stage">
       <canvas ref="canvasRef" class="scene-canvas" aria-label="Memorial space 3D scene"></canvas>
 
-      <nav class="action-dock" aria-label="Quick actions">
+      <nav v-if="effectiveRole !== 'viewer'" class="action-dock" aria-label="Quick actions">
         <button type="button" class="dock-button" :class="{ active: showQuickPanel && activePanel === 'media' }" @click="openQuickPanel('media')">
           <span class="dock-icon">+</span>
           <span class="dock-label">Media</span>
@@ -1377,7 +1405,7 @@ onBeforeUnmount(() => {
       </nav>
 
       <AssetPanel
-        v-if="showQuickPanel"
+        v-if="showQuickPanel && effectiveRole !== 'viewer'"
         :show-floor="showFloor"
         :panel-type="activePanel"
         @toggle-floor="toggleFloorVisibility"
@@ -1479,19 +1507,52 @@ onBeforeUnmount(() => {
         </div>
       </aside>
 
+      <nav v-if="effectiveRole !== 'viewer'" class="scene-storage-dock" aria-label="Scene storage actions">
+        <button
+          type="button"
+          class="dock-button"
+          title="Save scene to local storage"
+          @click="saveSceneToStorage"
+        >
+          <span class="dock-icon">💾</span>
+          <span class="dock-label">Save</span>
+        </button>
+        <button
+          type="button"
+          class="dock-button"
+          title="Load scene from local storage"
+          @click="loadSceneFromStorage"
+        >
+          <span class="dock-icon">📂</span>
+          <span class="dock-label">Load</span>
+        </button>
+      </nav>
+
       <!-- Room Settings Modal -->
       <div v-if="showRoomSettingsModal" class="modal-backdrop" role="dialog" aria-modal="true">
         <div class="modal-card">
-          <h3>Room settings</h3>
-          <div style="margin:10px 0">
-            <label style="display:flex;align-items:center;gap:8px">Privacy:
-              <button @click="toggleRoomPrivacy" style="margin-left:12px;padding:8px;border-radius:8px">{{ roomPrivacy === 'private' ? 'Private' : 'Public' }}</button>
-            </label>
+          <div class="modal-card-header">
+            <h3>Room settings</h3>
+            <button type="button" class="modal-close-button" @click="showRoomSettingsModal = false">Close ×</button>
           </div>
 
-          <div style="margin:10px 0">
-            <button @click="generateInviteCode" style="padding:8px;border-radius:8px">{{ roomInviteCode ? 'Regenerate invite' : 'Generate invite' }}</button>
-            <div v-if="roomInviteCode" style="margin-top:8px">Code: <strong>{{ roomInviteCode }}</strong></div>
+          <div class="room-settings-row">
+            <div class="room-settings-label">Privacy</div>
+            <button @click="toggleRoomPrivacy" class="room-setting-pill">{{ roomPrivacy === 'private' ? 'Private' : 'Public' }}</button>
+            <button v-if="roomPrivacy === 'private'" @click="generateInviteCode" class="room-invite-button">
+              {{ roomInviteCode ? 'Regenerate invite code' : 'Generate invite code' }}
+            </button>
+          </div>
+
+          <p class="room-settings-help" v-if="roomPrivacy === 'private'">
+            This code is used to invite members to this private room.
+          </p>
+          <p class="room-settings-help" v-else>
+            Invite codes are only available for private rooms.
+          </p>
+
+          <div v-if="roomInviteCode && roomPrivacy === 'private'" class="room-invite-code">
+            Code: <strong>{{ roomInviteCode }}</strong>
           </div>
 
           <hr />
@@ -1531,9 +1592,6 @@ onBeforeUnmount(() => {
             </div>
           </div>
 
-          <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:18px">
-            <button @click="showRoomSettingsModal = false" style="padding:8px 12px;border-radius:8px">Close</button>
-          </div>
         </div>
       </div>
 
@@ -1588,6 +1646,8 @@ onBeforeUnmount(() => {
   box-shadow: 0 5px 10px 0 rgba(0, 0, 0, 0.2);
   padding: 16px 38px;
   margin: 30px 228px;
+  position: relative;
+  z-index: 10010;
 }
 
 .floor-toggle {
@@ -1627,17 +1687,15 @@ onBeforeUnmount(() => {
 
 .brand-mark::before,
 .brand-mark::after {
-  content: '';
-  position: absolute;
-  background: rgba(255, 255, 255, 0.92);
+  display: none;
 }
 
-.brand-mark::before {
-  inset: 6px 14px;
-}
-
-.brand-mark::after {
-  inset: 14px 6px;
+.top-bar-controls {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-left: auto;
+  margin-right: 10px;
 }
 
 .profile-area {
@@ -1674,8 +1732,21 @@ onBeforeUnmount(() => {
   background: rgba(255, 255, 255, 0.96);
   box-shadow: 0 14px 30px rgba(0, 0, 0, 0.14);
   backdrop-filter: blur(12px);
-  z-index: 9999;
+  z-index: 10020;
   pointer-events: auto;
+}
+
+
+.profile-fade-enter-active, .profile-fade-leave-active {
+  transition: opacity .18s ease, transform .18s cubic-bezier(.2,.9,.2,1);
+}
+.profile-fade-enter-from, .profile-fade-leave-to {
+  opacity: 0;
+  transform: translateY(-6px);
+}
+.profile-fade-enter-to, .profile-fade-leave-from {
+  opacity: 1;
+  transform: translateY(0);
 }
 
 .profile-menu-item {
@@ -1707,6 +1778,67 @@ onBeforeUnmount(() => {
   border-radius: 12px;
   padding: 20px;
   box-shadow: 0 18px 40px rgba(0,0,0,0.18);
+  position: relative;
+}
+
+.modal-card-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.modal-card-header h3 {
+  margin: 0;
+}
+
+.modal-close-button {
+  border: none;
+  border-radius: 999px;
+  background: rgba(242, 175, 199, 0.18);
+  color: #1a1a1a;
+  font-family: 'Outfit', 'Segoe UI', sans-serif;
+  font-size: 14px;
+  font-weight: 700;
+  padding: 10px 12px;
+}
+
+.room-settings-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin: 14px 0 8px;
+}
+
+.room-settings-label {
+  font-size: 15px;
+  font-weight: 600;
+  color: #333;
+}
+
+.room-setting-pill,
+.room-invite-button {
+  padding: 8px 12px;
+  border-radius: 8px;
+  border: 1px solid #ddd;
+  background: rgba(255, 255, 255, 0.9);
+  color: #1a1a1a;
+  font-family: 'Outfit', 'Segoe UI', sans-serif;
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.room-settings-help {
+  margin: 0 0 10px;
+  font-size: 13px;
+  color: #666;
+}
+
+.room-invite-code {
+  margin: 6px 0 12px;
+  font-size: 13px;
+  color: #333;
 }
 
 .profile-menu-item {
@@ -1826,6 +1958,17 @@ onBeforeUnmount(() => {
   box-shadow: 0 14px 28px rgba(0, 0, 0, 0.14);
   backdrop-filter: blur(12px);
   overflow-y: auto;
+}
+
+.scene-storage-dock {
+  position: absolute;
+  right: 20px;
+  bottom: 16px;
+  display: flex;
+  flex-direction: row;
+  align-items: flex-end;
+  gap: 12px;
+  z-index: 24;
 }
 
 .selection-panel-header {
@@ -2009,6 +2152,12 @@ onBeforeUnmount(() => {
     right: 12px;
     justify-content: center;
     flex-wrap: wrap;
+  }
+
+  .scene-storage-dock {
+    right: 12px;
+    bottom: 108px;
+    flex-direction: row;
   }
 
   .dock-button {
