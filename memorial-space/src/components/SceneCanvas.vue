@@ -1373,8 +1373,10 @@ onBeforeUnmount(() => {
           {{ roomPrivacy === 'private' ? 'Privé' : 'Openbaar' }}
         </button>
 
-        <div style="margin-left:12px;font-weight:700;font-size:16px;color:#1a1a1a">{{ roomName || 'Onbekende kamer' }}</div>
       </div>
+
+      <div class="room-title">{{ roomName || 'Onbekende kamer' }}</div>
+
 
       <div class="profile-area">
         <span class="profile-name">{{ username }}</span>
@@ -1743,8 +1745,20 @@ onBeforeUnmount(() => {
   display: flex;
   align-items: center;
   gap: 12px;
-  margin-left: auto;
-  margin-right: 10px;
+  margin-left: 18px;
+}
+
+.room-title {
+  flex: 1 1 auto;
+  text-align: center;
+  font-weight: 700;
+  font-size: 16px;
+  color: #1a1a1a;
+  pointer-events: none;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  margin: 0 12px;
 }
 
 .profile-area {
