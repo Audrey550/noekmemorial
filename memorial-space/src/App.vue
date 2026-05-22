@@ -190,7 +190,7 @@ const handleLogin = (user) => {
     if (adminRooms.value.length === 0) {
       // create a default room for admin but keep the list visible
       const id = `room_${Date.now()}`
-      const room = { id, name: 'My Room', privacy: 'private' }
+      const room = { id, name: 'Mijn Kamer', privacy: 'private' }
       adminRooms.value.push(room)
       try { localStorage.setItem(key, JSON.stringify(adminRooms.value)) } catch (e) {}
     }
@@ -232,7 +232,7 @@ const createRoomConfirmed = () => {
   const email = authUser.value.email
   const key = `audreyRooms_${email}`
   const id = `room_${Date.now()}`
-  const roomName = newRoomName.value && newRoomName.value.trim().length ? newRoomName.value.trim() : `Room ${adminRooms.value.length + 1}`
+  const roomName = newRoomName.value && newRoomName.value.trim().length ? newRoomName.value.trim() : `Kamer ${adminRooms.value.length + 1}`
   const room = { id, name: roomName, privacy: newRoomPrivacy.value }
   adminRooms.value.push(room)
   try { localStorage.setItem(key, JSON.stringify(adminRooms.value)) } catch (e) {}
