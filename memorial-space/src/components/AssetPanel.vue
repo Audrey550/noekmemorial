@@ -66,12 +66,59 @@ const panelTitle = {
   media: 'Media',
   messages: 'Berichten',
   family: 'Kaarsje',
+  models: 'Modellen',
 }
 
 const panelSubtitle = {
   media: 'Voeg foto, audio of video toe aan de ruimte.',
   messages: 'Bekijk en verzamel herinneringen.',
   family: 'Laat een lichtje of familiebericht achter.',
+  models: 'Kies een categorie en plaats objecten in de ruimte.',
+}
+
+// Models panel data (scaffold)
+const modelCategories = [
+  { id: 'meubels', label: 'Meubels' },
+  { id: 'planten', label: 'Planten' },
+  { id: 'apparaten', label: 'Apparaten' },
+  { id: 'hobby', label: 'Hobby' },
+  { id: 'voertuigen', label: 'Voertuigen' },
+]
+
+const selectedModelCategory = ref('meubels')
+
+// simple scaffold of models per category (placeholders)
+const modelBank = {
+  meubels: [
+    { id: 'chair_01', name: 'Stoel', thumb: null },
+    { id: 'table_01', name: 'Tafel', thumb: null },
+    { id: 'sofa_01', name: 'Bank', thumb: null },
+  ],
+  planten: [
+    { id: 'plant_01', name: 'Monstera', thumb: null },
+    { id: 'plant_02', name: 'Vetplant', thumb: null },
+  ],
+  apparaten: [
+    { id: 'speaker_01', name: 'Luidspreker', thumb: null },
+    { id: 'lamp_01', name: 'Staande lamp', thumb: null },
+  ],
+  hobby: [
+    { id: 'guitar_01', name: 'Gitaar', thumb: null },
+    { id: 'bike_01', name: 'Fiets', thumb: null },
+  ],
+  voertuigen: [
+    { id: 'car_01', name: 'Auto', thumb: null },
+  ],
+}
+
+const selectModelCategory = (catId) => {
+  selectedModelCategory.value = catId
+}
+
+const placeModel = (model) => {
+  // emit generic add-asset with model id — SceneCanvas can interpret this
+  emit('add-asset', { id: model.id, name: model.name, category: selectedModelCategory.value })
+  handleClosePanel()
 }
 
 const sampleGalleryPhotos = [
@@ -492,7 +539,7 @@ const placeCandle = () => {
 </script>
 
 <template>
-  <aside class="asset-panel">
+  <aside class="asset-panel" :class="{ 'models-mode': props.panelType === 'models' }">
     <div class="panel-header">
       <div class="panel-heading">
         <h2>{{ panelHeading }}</h2>
@@ -502,15 +549,15 @@ const placeCandle = () => {
       <div class="panel-actions">
         <button
           type="button"
-          class="floor-panel-toggle"
-          :aria-pressed="showFloor"
-          :title="showFloor ? 'Hide floor' : 'Show floor'"
+            class="floor-panel-toggle"
+            :aria-pressed="showFloor"
+            :title="showFloor ? 'Verberg vloer' : 'Toon vloer'"
           @click="handleToggleFloor"
         >
           {{ showFloor ? 'Vloer aan' : 'Vloer uit' }}
         </button>
 
-        <button type="button" class="close-panel-button" aria-label="Close panel" @click="handleClosePanel">
+        <button type="button" class="close-panel-button" aria-label="Sluit paneel" @click="handleClosePanel">
           ×
         </button>
       </div>
@@ -529,6 +576,23 @@ const placeCandle = () => {
       </button>
     </div>
 
+    <div v-else-if="panelType === 'models'" class="models-panel models-simple">
+      <div class="models-category-list simple-list">
+        <button
+          v-for="cat in modelCategories"
+          :key="cat.id"
+          type="button"
+          class="models-category-button"
+          :class="{ active: selectedModelCategory === cat.id }"
+          @click="selectModelCategory(cat.id)"
+        >
+          {{ cat.label }}
+        </button>
+      </div>
+
+      <!-- sample model thumbnails removed per design — only categories shown -->
+    </div>
+
     <div v-else-if="panelType === 'media' && mediaMode === 'coming-soon'" class="media-placeholder">
       <article class="message-card">
         <span class="message-author">Binnenkort beschikbaar</span>
@@ -541,7 +605,7 @@ const placeCandle = () => {
     </div>
 
     <div v-else-if="panelType === 'media' && mediaMode === 'photo-source'" class="photo-flow">
-      <button type="button" class="back-link" @click="backToMediaChooser">← back</button>
+      <button type="button" class="back-link" @click="backToMediaChooser">← terug</button>
 
       <section class="photo-card-shell">
         <div class="photo-flow-title">
@@ -614,7 +678,7 @@ const placeCandle = () => {
     </div>
 
     <div v-else-if="panelType === 'media' && mediaMode === 'photo-details'" class="photo-flow">
-      <button type="button" class="back-link" @click="mediaMode = 'photo-source'">← back</button>
+      <button type="button" class="back-link" @click="mediaMode = 'photo-source'">← terug</button>
 
       <section class="photo-card-shell photo-details-shell">
         <div class="photo-flow-title">
@@ -647,7 +711,7 @@ const placeCandle = () => {
     </div>
 
     <div v-else-if="panelType === 'media' && mediaMode === 'audio-source'" class="audio-flow">
-      <button type="button" class="back-link" @click="backToMediaChooser">← back</button>
+      <button type="button" class="back-link" @click="backToMediaChooser">← terug</button>
 
       <!-- Section 1: Upload from Device -->
       <section class="photo-card-shell">
@@ -717,7 +781,7 @@ const placeCandle = () => {
     </div>
 
     <div v-else-if="panelType === 'media' && mediaMode === 'video-source'" class="audio-flow">
-      <button type="button" class="back-link" @click="backToMediaChooser">← back</button>
+      <button type="button" class="back-link" @click="backToMediaChooser">← terug</button>
 
       <section class="photo-card-shell">
         <div class="photo-flow-title">
@@ -772,7 +836,7 @@ const placeCandle = () => {
     </div>
 
     <div v-else-if="panelType === 'media' && mediaMode === 'video-details'" class="audio-flow">
-      <button type="button" class="back-link" @click="mediaMode = 'video-source'">← back</button>
+      <button type="button" class="back-link" @click="mediaMode = 'video-source'">← terug</button>
 
       <section class="photo-card-shell photo-details-shell">
         <div class="photo-flow-title">
@@ -803,7 +867,7 @@ const placeCandle = () => {
     </div>
 
     <div v-else-if="panelType === 'media' && mediaMode === 'audio-details'" class="audio-flow">
-      <button type="button" class="back-link" @click="mediaMode = 'audio-source'">← back</button>
+      <button type="button" class="back-link" @click="mediaMode = 'audio-source'">← terug</button>
 
       <section class="photo-card-shell photo-details-shell">
         <div class="photo-flow-title">
@@ -881,7 +945,7 @@ const placeCandle = () => {
     </div>
 
     <div v-else-if="panelType === 'family' && familyMode === 'details'" class="candle-flow">
-      <button type="button" class="back-link" @click="backToCandleChooser">← back</button>
+      <button type="button" class="back-link" @click="backToCandleChooser">← terug</button>
 
       <section class="photo-card-shell photo-details-shell">
         <div class="photo-flow-title">
@@ -963,7 +1027,6 @@ const placeCandle = () => {
   gap: 8px;
 }
 
-.floor-panel-toggle,
 .close-panel-button {
   border: none;
   border-radius: 10px;
@@ -973,18 +1036,25 @@ const placeCandle = () => {
   font-weight: 700;
 }
 
-.floor-panel-toggle {
-  font-size: 13px;
-  padding: 9px 12px;
-}
-
 .close-panel-button {
   width: 32px;
   height: 32px;
   font-size: 20px;
-  line-height: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
 }
 
+/* hide floor toggle when in models panel */
+.asset-panel.models-mode .panel-actions .floor-panel-toggle {
+  display: none;
+}
+
+/* remove header border for models mode */
+.asset-panel.models-mode .panel-header {
+  border-bottom: none;
+}
 
 .asset-grid,
 .message-list,
@@ -997,6 +1067,160 @@ const placeCandle = () => {
   padding: 14px 18px; /* add horizontal padding for inner content */
   overflow-y: auto;
   flex: 1;
+}
+
+.models-mode {
+  width: 260px; /* match Assets container width */
+  right: auto;
+  left: 266px; /* align with brand mark (padding + margin in header) */
+  top: 50%; /* vertically center like the left toolbar */
+  transform: translateY(-50%);
+  bottom: auto;
+  max-height: calc(100vh - 120px);
+  overflow-y: auto;
+}
+
+/* center category buttons and make them uniform width */
+.models-category-list.simple-list {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 0 16px;
+}
+
+.models-category-button {
+  width: 220px;
+  text-align: center; /* center the label text */
+  padding: 14px 18px;
+  border-radius: 18px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.models-category-button.active {
+  background: linear-gradient(180deg, rgba(242,175,199,0.18), rgba(244,210,225,0.12));
+  box-shadow: inset 0 2px 0 rgba(255,255,255,0.25);
+}
+
+.models-columns {
+  display: grid;
+  grid-template-columns: 140px 140px 1fr;
+  gap: 12px;
+  padding: 12px 18px;
+  align-items: start;
+}
+
+.models-simple .models-title {
+  font-size: 28px;
+  margin-top: 8px;
+}
+
+.models-copy {
+  color: rgba(22,18,43,0.85);
+  margin: 8px 0 12px;
+}
+
+.models-category-list.simple-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  width: 100%;
+  align-items: center;
+  padding: 0 0 16px; /* add bottom padding matching panel header top */
+}
+
+.models-sample-row {
+  margin-top: 18px;
+  display: flex;
+  gap: 12px;
+}
+
+.models-sample {
+  background: #fff;
+  border-radius: 12px;
+  padding: 10px;
+  display:flex;
+  flex-direction:column;
+  gap:8px;
+  align-items:center;
+  width:120px;
+  cursor:pointer;
+}
+
+.models-left {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.models-title {
+  color: #f8f6ff;
+  font-family: 'Alpino', 'Segoe UI', sans-serif;
+  margin: 6px 0 4px;
+}
+
+.models-category-button {
+  padding: 12px 16px;
+  border-radius: 18px;
+  border: 1px solid rgba(54,42,92,0.06);
+  background: #fff;
+  text-align: center;
+  font-weight: 800;
+  color: #1f1330;
+  box-shadow: 0 6px 18px rgba(48,38,78,0.06);
+  width: 220px;
+  margin: 0 auto; /* center the button element itself */
+}
+
+.models-category-button.active {
+  background: linear-gradient(180deg,#fdeff6,#f6e6f0);
+  border-color: rgba(195,121,166,0.24);
+}
+
+.models-center {
+  display:flex;
+  flex-direction:column;
+  gap:8px;
+}
+
+.models-right {
+  display:flex;
+  flex-direction:column;
+}
+
+.models-grid {
+  display:grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 12px;
+}
+
+.model-card {
+  border-radius: 12px;
+  background: #fff;
+  border: 1px solid rgba(54,42,92,0.06);
+  padding: 12px;
+  display:flex;
+  flex-direction:column;
+  gap:8px;
+  align-items:center;
+}
+
+.model-thumb {
+  width:100%;
+  height:84px;
+  border-radius:8px;
+  background: linear-gradient(180deg,#f3f3f6,#e9e7ef);
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  font-size:28px;
+}
+
+.model-name {
+  font-weight:700;
+  color:#1a1a1a;
 }
 
 .audio-flow {
