@@ -452,3 +452,82 @@ Next: Quick smoke tests of the login → open editor flow, then begin Supabase c
 - Result: success — placed object restored after save/load. Admin-only controls (privacy, invite generation) visible. Viewers are blocked from adding objects. 
 - Tracker/Todo: marked quick smoke-test complete. Ready to start Supabase init next.
 
+## Session Snapshot (2026-05-22, evening)
+
+### Request Logged
+- User asked for: clear recap of what was achieved today, what remains, and best focus for tonight.
+- User preference reaffirmed: keep this tracker updated throughout the full project.
+
+### What Was Achieved Today
+- Room-management flow was improved in the admin pre-page:
+  - Better room create/update handling in `App.vue`.
+  - Local persistence for room list and room metadata (name/privacy/invite code).
+- Invite onboarding UI was improved:
+  - Invite avatar step got image-preview and styling improvements.
+  - Invite loading screen now includes room name and improved loading visuals.
+- Room settings UX in editor improved:
+  - Inline validation/success feedback in Kamerinstellingen.
+  - Room name updates reflected in top bar.
+  - `room-updated` event path in place so admin list can refresh.
+- Localization pass started and mostly applied in working tree:
+  - Dutch labels for login/admin/editor controls and transform tooltips/buttons.
+
+### Current State Right Now
+- Today has multiple commits on `main` covering room-management and invite/admin UX refinements.
+- There are still uncommitted changes in progress:
+  - `memorial-space/src/App.vue`
+  - `memorial-space/src/components/AssetPanel.vue`
+  - `memorial-space/src/components/Login.vue`
+  - `memorial-space/src/components/SceneCanvas.vue`
+
+### What Still Needs To Be Done
+1. Finish and verify the Dutch language pass (remove remaining mixed EN/NL labels and alerts).
+2. Smoke-test full role flow end-to-end:
+   - admin login → room list → open editor → room settings save
+   - co-editor invite flow → onboarding → editor access
+   - viewer mode restrictions
+3. Stabilize admin page layout details (spacing/alignment/responsive behavior).
+4. Prepare 3D asset handoff path:
+   - Add at least 2 real demo GLB files under `public/models`
+   - Register them in the asset panel and confirm placement/selection/save-load roundtrip
+5. Replace remaining blocking alerts with inline feedback/toast behavior where feasible.
+
+### Best Focus For Tonight (Recommended)
+- Primary recommendation: continue with Admin page layout polish first, but timebox it to 60-90 minutes.
+- Then move immediately to one thin 3D implementation slice tonight:
+  - import one real GLB model,
+  - show it in AssetPanel,
+  - place it in scene,
+  - save/load it successfully.
+
+Why this order:
+- A clean admin shell reduces friction for testing roles/invites.
+- One real GLB in production path de-risks the next milestone much more than pure layout work.
+
+### Tonight Plan (Practical Sequence)
+1. Admin layout polish pass (desktop + mobile checks).
+2. Commit layout changes.
+3. Add first real GLB integration and verify placement.
+4. Quick regression smoke test for save/load and role gating.
+5. Commit again with a short demo-ready message.
+
+---
+Tracker updated: 2026-05-22 evening snapshot added with achievements, open work, and tonight recommendation.
+
+## Session Update (2026-05-22, late evening)
+
+- Admin editor layout pass started based on provided MedFi screenshot reference, but adapted to Memorial Space styling.
+- `SceneCanvas.vue` was restyled to a cleaner editor chrome:
+  - compact top utility controls,
+  - brand block on top-right,
+  - vertical quick-action dock on the left,
+  - bottom-centered compact save/load dock,
+  - softened scene background to match existing project palette.
+- A temporary Vue template mismatch occurred during refactor (`Invalid end tag` in `SceneCanvas.vue`).
+- Hotfix applied immediately by removing one extra closing `</div>` in the header block.
+- Validation:
+  - file diagnostics clean,
+  - `npm run build` completed successfully.
+
+Tracker updated: 2026-05-22 late-evening layout pass and compile hotfix logged.
+
