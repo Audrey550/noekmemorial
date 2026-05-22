@@ -379,7 +379,7 @@ const loadSceneFromStorage = async () => {
     }
   } catch (error) {
     console.error('Failed to load scene:', error)
-    alert('Failed to load scene')
+    alert('Laden van scène is mislukt')
   }
 }
 
@@ -528,36 +528,49 @@ const addObjectToScene = async (assetId) => {
     alert('View-only users cannot add objects (demo).')
     return
   }
-  const asset = availableAssets.find(a => a.id === assetId)
-  if (!asset || !scene) return
 
-  let model
+  if (!scene || !room) return
+
+  const asset = availableAssets.find(a => a.id === assetId)
+  let model = null
 
   try {
-    // Try to load GLB file
-    const gltf = await gltfLoader.loadAsync(asset.file)
-    model = gltf.scene.clone()
+    if (asset && asset.file) {
+      const gltf = await gltfLoader.loadAsync(asset.file)
+      model = gltf.scene.clone()
+    } else {
+      throw new Error('No asset file')
+    }
   } catch (error) {
-    // Fallback: create placeholder models using Three.js primitives
-    console.log(`Creating placeholder for ${asset.id}`)
+    console.log(`Creating placeholder for ${assetId}`)
     model = createPlaceholderModel(assetId)
   }
-  
+
   // Default placement in center of room
   model.position.set(Math.random() * 2 - 1, 0.5, Math.random() * 2 - 1)
   model.scale.set(1, 1, 1)
-  
+
   // Enable shadows
-  model.traverse((child) => {
-    if (child.isMesh) {
-      child.castShadow = true
-      child.receiveShadow = true
-    }
-  })
-  
+  if (model.traverse) {
+    model.traverse((child) => {
+      if (child.isMesh) {
+        child.castShadow = true
+        child.receiveShadow = true
+      }
+    })
+  }
+
   room.add(model)
 
   createSceneObjectRecord(model, assetId)
+}
+
+// Handle `add-asset` emitted from AssetPanel
+const handleAddAsset = (asset) => {
+  if (!asset) return
+  const id = asset.id || asset
+  addObjectToScene(id)
+  closeQuickPanel()
 }
 
 const toggleFloorVisibility = () => {
@@ -1377,7 +1390,6 @@ onBeforeUnmount(() => {
 
       <div class="room-title">{{ roomName || 'Onbekende kamer' }}</div>
 
-
       <div class="profile-area">
         <span class="profile-name">{{ username }}</span>
         <div ref="profileMenuElement" class="profile-menu-wrap">
@@ -1423,25 +1435,41 @@ onBeforeUnmount(() => {
     <section class="scene-stage">
       <canvas ref="canvasRef" class="scene-canvas" aria-label="3D herdenkingsruimte"></canvas>
 
-      <nav v-if="effectiveRole !== 'viewer'" class="action-dock" aria-label="Snelle acties">
-        <button type="button" class="dock-button" :class="{ active: showQuickPanel && activePanel === 'media' }" @click="openQuickPanel('media')">
-          <span class="dock-icon">+</span>
-          <span class="dock-label">Media</span>
-        </button>
-        <button type="button" class="dock-button" :class="{ active: showQuickPanel && activePanel === 'messages' }" @click="openQuickPanel('messages')">
-          <span class="dock-icon">✉</span>
-          <span class="dock-label">Berichten</span>
-        </button>
-        <button type="button" class="dock-button" :class="{ active: showQuickPanel && activePanel === 'family' }" @click="openQuickPanel('family')">
-          <span class="dock-icon">🕯️</span>
-          <span class="dock-label">Kaarsje</span>
-        </button>
-      </nav>
+      <aside v-if="effectiveRole !== 'viewer'" class="left-toolbar vertical-center" aria-label="Acties en scènebeheer">
+        <div class="left-toolbar-card">
+          <h3 class="left-toolbar-title">Assets</h3>
+
+          <nav class="action-dock column" aria-label="Snelle acties">
+            <button type="button" class="dock-button" @click="openRoomSettings">
+              <span class="dock-icon">🏠</span>
+              <span class="dock-label">Ruimte</span>
+            </button>
+            <button type="button" class="dock-button" :class="{ active: showQuickPanel && activePanel === 'models' }" @click="openQuickPanel('models')">
+              <span class="dock-icon">🧩</span>
+              <span class="dock-label">Modellen</span>
+            </button>
+            <button type="button" class="dock-button" :class="{ active: showQuickPanel && activePanel === 'family' }" @click="openQuickPanel('family')">
+              <span class="dock-icon">💡</span>
+              <span class="dock-label">Licht</span>
+            </button>
+            <button type="button" class="dock-button" :class="{ active: showQuickPanel && activePanel === 'media' }" @click="openQuickPanel('media')">
+              <span class="dock-icon">🔊</span>
+              <span class="dock-label">Geluid</span>
+            </button>
+            <button type="button" class="dock-button" :class="{ active: showQuickPanel && activePanel === 'media' }" @click="openQuickPanel('media')">
+              <span class="dock-icon">🖼️</span>
+              <span class="dock-label">Media</span>
+            </button>
+          </nav>
+
+        </div>
+      </aside>
 
       <AssetPanel
         v-if="showQuickPanel && effectiveRole !== 'viewer'"
         :show-floor="showFloor"
         :panel-type="activePanel"
+        @add-asset="handleAddAsset"
         @toggle-floor="toggleFloorVisibility"
         @close-panel="closeQuickPanel"
         @place-photo="handlePlacePhoto"
@@ -1450,6 +1478,27 @@ onBeforeUnmount(() => {
         @place-message="handlePlaceMessage"
         @place-candle="handlePlaceCandle"
       />
+
+      <nav v-if="effectiveRole !== 'viewer'" class="scene-storage-dock" aria-label="Scène opslag acties">
+        <button
+          type="button"
+          class="storage-dock-button"
+          title="Sla scène op in lokale opslag"
+          @click="saveSceneToStorage"
+        >
+          <span class="dock-icon">💾</span>
+          <span class="dock-label">Opslaan</span>
+        </button>
+        <button
+          type="button"
+          class="storage-dock-button"
+          title="Laad scène uit lokale opslag"
+          @click="loadSceneFromStorage"
+        >
+          <span class="dock-icon">📂</span>
+          <span class="dock-label">Laden</span>
+        </button>
+      </nav>
 
       <div
         v-if="hoveredPhoto"
@@ -1478,27 +1527,27 @@ onBeforeUnmount(() => {
           <div class="control-group">
             <div class="control-label">Verplaatsen</div>
             <div class="control-grid move-grid">
-              <button type="button" class="selection-icon-button" title="Forward" @click="applyTransformToSelectedObject({ moveZ: -transformStep })">
+              <button type="button" class="selection-icon-button" title="Vooruit" @click="applyTransformToSelectedObject({ moveZ: -transformStep })">
                 <span class="icon">↑</span>
                 <span class="label">Vooruit</span>
               </button>
-              <button type="button" class="selection-icon-button" title="Backward" @click="applyTransformToSelectedObject({ moveZ: transformStep })">
+              <button type="button" class="selection-icon-button" title="Achteruit" @click="applyTransformToSelectedObject({ moveZ: transformStep })">
                 <span class="icon">↓</span>
                 <span class="label">Achteruit</span>
               </button>
-              <button type="button" class="selection-icon-button" title="Left" @click="applyTransformToSelectedObject({ moveX: -transformStep })">
+              <button type="button" class="selection-icon-button" title="Links" @click="applyTransformToSelectedObject({ moveX: -transformStep })">
                 <span class="icon">←</span>
                 <span class="label">Links</span>
               </button>
-              <button type="button" class="selection-icon-button" title="Right" @click="applyTransformToSelectedObject({ moveX: transformStep })">
+              <button type="button" class="selection-icon-button" title="Rechts" @click="applyTransformToSelectedObject({ moveX: transformStep })">
                 <span class="icon">→</span>
                 <span class="label">Rechts</span>
               </button>
-              <button type="button" class="selection-icon-button" title="Up" @click="applyTransformToSelectedObject({ moveY: transformStep })">
+              <button type="button" class="selection-icon-button" title="Omhoog" @click="applyTransformToSelectedObject({ moveY: transformStep })">
                 <span class="icon">⬆</span>
                 <span class="label">Omhoog</span>
               </button>
-              <button type="button" class="selection-icon-button" title="Down" @click="applyTransformToSelectedObject({ moveY: -transformStep })">
+              <button type="button" class="selection-icon-button" title="Omlaag" @click="applyTransformToSelectedObject({ moveY: -transformStep })">
                 <span class="icon">⬇</span>
                 <span class="label">Omlaag</span>
               </button>
@@ -1508,11 +1557,11 @@ onBeforeUnmount(() => {
           <div class="control-group">
             <div class="control-label">Rotatie</div>
             <div class="control-grid rotate-grid">
-              <button type="button" class="selection-icon-button" title="Rotate Left" @click="applyTransformToSelectedObject({ rotateY: -rotateStep })">
+              <button type="button" class="selection-icon-button" title="Draai links" @click="applyTransformToSelectedObject({ rotateY: -rotateStep })">
                 <span class="icon">↶</span>
                 <span class="label">Links</span>
               </button>
-              <button type="button" class="selection-icon-button" title="Rotate Right" @click="applyTransformToSelectedObject({ rotateY: rotateStep })">
+              <button type="button" class="selection-icon-button" title="Draai rechts" @click="applyTransformToSelectedObject({ rotateY: rotateStep })">
                 <span class="icon">↷</span>
                 <span class="label">Rechts</span>
               </button>
@@ -1522,11 +1571,11 @@ onBeforeUnmount(() => {
           <div class="control-group">
             <div class="control-label">Schaal</div>
             <div class="control-grid scale-grid">
-              <button type="button" class="selection-icon-button" title="Shrink" @click="applyTransformToSelectedObject({ scaleAdjust: -scaleStep })">
+              <button type="button" class="selection-icon-button" title="Verklein" @click="applyTransformToSelectedObject({ scaleAdjust: -scaleStep })">
                 <span class="icon">⊖</span>
                 <span class="label">Kleiner</span>
               </button>
-              <button type="button" class="selection-icon-button" title="Enlarge" @click="applyTransformToSelectedObject({ scaleAdjust: scaleStep })">
+              <button type="button" class="selection-icon-button" title="Vergroot" @click="applyTransformToSelectedObject({ scaleAdjust: scaleStep })">
                 <span class="icon">⊕</span>
                 <span class="label">Groter</span>
               </button>
@@ -1540,27 +1589,6 @@ onBeforeUnmount(() => {
           </button>
         </div>
       </aside>
-
-      <nav v-if="effectiveRole !== 'viewer'" class="scene-storage-dock" aria-label="Scène opslag acties">
-        <button
-          type="button"
-          class="dock-button"
-          title="Sla scène op in lokale opslag"
-          @click="saveSceneToStorage"
-        >
-          <span class="dock-icon">💾</span>
-          <span class="dock-label">Opslaan</span>
-        </button>
-        <button
-          type="button"
-          class="dock-button"
-          title="Laad scène uit lokale opslag"
-          @click="loadSceneFromStorage"
-        >
-          <span class="dock-icon">📂</span>
-          <span class="dock-label">Laden</span>
-        </button>
-      </nav>
 
       <!-- Room Settings Modal -->
       <div v-if="showRoomSettingsModal" class="modal-backdrop" role="dialog" aria-modal="true">
@@ -1770,6 +1798,11 @@ onBeforeUnmount(() => {
   color: #1a1a1a;
 }
 
+.profile-name {
+  font-size: inherit;
+  font-weight: 700;
+}
+
 .profile-menu-wrap {
   position: relative;
 }
@@ -1939,7 +1972,7 @@ onBeforeUnmount(() => {
   flex: 1;
   min-height: 0;
   position: relative;
-  background: transparent;
+  background: linear-gradient(145deg, #f6f0f6 0%, #f3f5f7 42%, #eef4f7 100%);
   overflow: hidden;
 }
 
@@ -1950,43 +1983,106 @@ onBeforeUnmount(() => {
 }
 
 .action-dock {
-  position: absolute;
-  left: 20px;
-  bottom: 16px;
+  position: static;
   display: flex;
-  gap: 12px;
+  flex-direction: column;
+  gap: 10px;
 }
 
 .dock-button {
-  width: 98px;
-  height: 84px;
-  border: 1px solid #dfdfdf;
-  border-radius: 8px;
-  background: rgba(255, 255, 255, 0.74);
+  width: 162px;
+  height: 48px;
+  border: 1px solid rgba(238, 191, 210, 0.72);
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.92);
   display: flex;
-  flex-direction: column;
+  flex-direction: row;
   align-items: center;
-  justify-content: center;
-  gap: 8px;
+  justify-content: flex-start;
+  gap: 12px;
+  padding: 0 14px;
 }
 
 .dock-button.active {
-  border-color: #c88fb8;
-  background: rgba(242, 175, 199, 0.24);
-  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.12);
+  border-color: rgba(195, 121, 166, 0.92);
+  background: rgba(244, 210, 225, 0.74);
+  box-shadow: 0 8px 16px rgba(43, 23, 66, 0.12);
 }
 
 .dock-icon {
   font-family: 'Trebuchet MS', 'Segoe UI', sans-serif;
   font-weight: 800;
-  font-size: 28px;
+  font-size: 20px;
   line-height: 1;
-  color: #050505;
+  color: #3c325b;
 }
 
 .dock-label {
-  font-size: 12px;
-  color: #6f6f6f;
+  font-size: 13px;
+  font-weight: 700;
+  color: #4d426f;
+}
+
+.left-toolbar {
+  position: absolute;
+  left: 20px;
+  top: 50%;
+  transform: translateY(-50%);
+  z-index: 26;
+}
+
+.left-toolbar-card {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 16px;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.46);
+  border: 1px solid rgba(188, 152, 188, 0.25);
+  box-shadow: 0 10px 22px rgba(48, 38, 78, 0.12);
+  backdrop-filter: blur(6px);
+}
+
+.left-toolbar-title {
+  margin: 0;
+  font-family: 'Outfit', 'Segoe UI', sans-serif;
+  font-size: 36px;
+  font-weight: 700;
+  line-height: 1;
+  color: #111111;
+}
+
+.scene-storage-dock {
+  position: absolute;
+  right: 18px;
+  bottom: 14px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  z-index: 27;
+}
+
+.storage-dock-button {
+  width: 54px;
+  height: 54px;
+  border: 1px solid rgba(137, 118, 175, 0.4);
+  border-radius: 16px;
+  background: rgba(241, 236, 249, 0.92);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.storage-dock-button .dock-icon {
+  font-size: 22px;
+}
+
+.storage-dock-button .dock-label {
+  display: none;
+}
+
+.storage-dock-button:hover {
+  background: rgba(233, 224, 248, 0.98);
 }
 
 .photo-tooltip {
@@ -2023,7 +2119,7 @@ onBeforeUnmount(() => {
 .selection-panel {
   position: absolute;
   right: 20px;
-  top: 120px;
+  top: 86px;
   width: 310px;
   max-height: 70vh;
   padding: 16px;
@@ -2033,17 +2129,6 @@ onBeforeUnmount(() => {
   box-shadow: 0 14px 28px rgba(0, 0, 0, 0.14);
   backdrop-filter: blur(12px);
   overflow-y: auto;
-}
-
-.scene-storage-dock {
-  position: absolute;
-  right: 20px;
-  bottom: 16px;
-  display: flex;
-  flex-direction: row;
-  align-items: flex-end;
-  gap: 12px;
-  z-index: 24;
 }
 
 .selection-panel-header {
@@ -2223,25 +2308,50 @@ onBeforeUnmount(() => {
   }
 
   .action-dock {
-    left: 12px;
-    right: 12px;
-    justify-content: center;
-    flex-wrap: wrap;
+    gap: 8px;
   }
 
-  .scene-storage-dock {
-    right: 12px;
-    bottom: 108px;
-    flex-direction: row;
+  .left-toolbar {
+    left: 10px;
+    top: 50%;
+  }
+
+  .left-toolbar-card {
+    padding: 12px;
+    gap: 10px;
+  }
+
+  .left-toolbar-title {
+    font-size: 30px;
   }
 
   .dock-button {
-    width: 92px;
-    height: 76px;
+    width: 148px;
+    height: 40px;
+  }
+
+  .scene-storage-dock {
+    right: 10px;
+    bottom: 10px;
+    gap: 8px;
+  }
+
+  .storage-dock-button {
+    width: 48px;
+    height: 48px;
+    border-radius: 14px;
   }
 
   .dock-icon {
-    font-size: 24px;
+    font-size: 18px;
+  }
+
+  .selection-panel {
+    top: 136px;
+    right: 10px;
+    width: min(310px, calc(100% - 20px));
+    max-height: 58vh;
   }
 }
+
 </style>
