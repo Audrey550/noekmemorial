@@ -19,6 +19,9 @@ const roomTheme = ref({
   presetId: 'soft-pink',
   wallShadeIndex: 2,
   floorShadeIndex: 2,
+  wallMaterialIndex: 0,
+  floorMaterialIndex: 0,
+  useTextures: true,
 })
 const roomSettingsError = ref('')
 const roomSettingsSuccess = ref('')
@@ -124,6 +127,23 @@ let raycaster = new THREE.Raycaster()
 let pointer = new THREE.Vector2()
 let panelSwitchTimer = null
 
+// Texture file paths grouped by surface type
+const wallpaperPath = '/textures/walls/wallpaper.svg'
+const woodPath = '/textures/floors/wood.svg'
+const stonePath = '/textures/floors/stone.svg'
+
+const defaultWallMaterials = [
+  { id: 'whitepaper', label: 'White paper', roughness: 0.92, metalness: 0.01, map: '/textures/walls/wallpaper_whitepaper.jpg', repeat: [4,4] },
+  { id: 'pinkbrick', label: 'Pink brick', roughness: 0.7, metalness: 0.02, map: '/textures/walls/wallpaper_pinkbrick.jpg', repeat: [3,3] },
+  { id: 'greybrick', label: 'Grey brick', roughness: 0.78, metalness: 0.02, map: '/textures/walls/wallpaper_greybrick.jpg', repeat: [3,3] },
+]
+
+const defaultFloorMaterials = [
+  { id: 'wood_white', label: 'White beach wood', roughness: 0.6, metalness: 0.03, map: '/textures/floors/wood_whitebeach.jpg', repeat: [6,6] },
+  { id: 'wood_dark', label: 'Dark brown wood', roughness: 0.55, metalness: 0.03, map: '/textures/floors/wood_darkbrown.jpg', repeat: [6,6] },
+  { id: 'wood_bw', label: 'Black/white wood', roughness: 0.6, metalness: 0.03, map: '/textures/floors/wood_blackwhites.jpg', repeat: [6,6] },
+]
+
 const roomThemePresets = [
   {
     id: 'soft-pink',
@@ -191,6 +211,15 @@ const roomThemePresets = [
 ]
 
 const getRoomThemePreset = (presetId) => roomThemePresets.find(theme => theme.id === presetId) || roomThemePresets[0]
+// ensure materials are always available on the preset object
+const getRoomThemePresetWithMaterials = (presetId) => {
+  const base = getRoomThemePreset(presetId)
+  return {
+    ...base,
+    wallMaterials: base.wallMaterials || defaultWallMaterials,
+    floorMaterials: base.floorMaterials || defaultFloorMaterials,
+  }
+}
 
 const clampShadeIndex = (index, maxIndex) => {
   const numericIndex = Number.isFinite(Number(index)) ? Number(index) : 2
@@ -207,11 +236,15 @@ const normalizeRoomThemeState = (value) => {
   }
 
   const presetId = value?.presetId || 'soft-pink'
-  const preset = getRoomThemePreset(presetId)
+  const preset = getRoomThemePresetWithMaterials(presetId)
   return {
     presetId,
     wallShadeIndex: clampShadeIndex(value?.wallShadeIndex, preset.wallShades.length - 1),
     floorShadeIndex: clampShadeIndex(value?.floorShadeIndex, preset.floorShades.length - 1),
+    wallMaterialIndex: clampShadeIndex(value?.wallMaterialIndex ?? 0, (preset.wallMaterials || defaultWallMaterials).length - 1),
+    floorMaterialIndex: clampShadeIndex(value?.floorMaterialIndex ?? 0, (preset.floorMaterials || defaultFloorMaterials).length - 1),
+    useTextures: typeof value?.useTextures === 'boolean' ? value.useTextures : true,
+    useColor: typeof value?.useColor === 'boolean' ? value.useColor : true,
   }
 }
 
@@ -429,22 +462,101 @@ const applyRoomTheme = (themeUpdate, persist = true) => {
       : {}),
   })
 
-  const preset = getRoomThemePreset(nextTheme.presetId)
+  const preset = getRoomThemePresetWithMaterials(nextTheme.presetId)
   const wallColor = preset.wallShades[nextTheme.wallShadeIndex] || preset.wallShades[2] || preset.wallShades[0]
   const floorColor = preset.floorShades[nextTheme.floorShadeIndex] || preset.floorShades[2] || preset.floorShades[0]
+
+  // prepare variant descriptors early so they can be referenced when toggling color
+  const wallVariant = (preset.wallMaterials || defaultWallMaterials)[nextTheme.wallMaterialIndex || 0]
+  const floorVariant = (preset.floorMaterials || defaultFloorMaterials)[nextTheme.floorMaterialIndex || 0]
 
   roomTheme.value = nextTheme
 
   if (floorMaterial?.color) {
-    floorMaterial.color.set(floorColor)
+    if (nextTheme.useColor !== false) {
+      floorMaterial.color.set(floorColor)
+    } else {
+      // use a slightly darker neutral color so textures don't appear overly bright
+      floorMaterial.color.set('#e6e6e6')
+      // increase roughness a bit to make the surface more matte when color is disabled
+      if (typeof floorVariant?.roughness === 'number') {
+        floorMaterial.roughness = Math.min(1, (floorVariant.roughness || 0.8) + 0.12)
+      } else {
+        floorMaterial.roughness = Math.min(1, floorMaterial.roughness + 0.12)
+      }
+    }
   }
 
   if (wallMaterial?.color) {
-    wallMaterial.color.set(wallColor)
+    if (nextTheme.useColor !== false) {
+      wallMaterial.color.set(wallColor)
+    } else {
+      // use a slightly darker neutral color so textures don't appear overly bright
+      wallMaterial.color.set('#e6e6e6')
+      // increase roughness a bit to make the surface more matte when color is disabled
+      if (typeof wallVariant?.roughness === 'number') {
+        wallMaterial.roughness = Math.min(1, (wallVariant.roughness || 0.8) + 0.12)
+      } else {
+        wallMaterial.roughness = Math.min(1, wallMaterial.roughness + 0.12)
+      }
+    }
   }
 
   if (trimMaterial?.color) {
     trimMaterial.color.set(preset.trim)
+  }
+
+  // Apply simple material variant settings (roughness / metalness)
+  try {
+
+    if (wallMaterial) {
+      if (wallVariant?.roughness !== undefined) wallMaterial.roughness = wallVariant.roughness
+      if (wallVariant?.metalness !== undefined) wallMaterial.metalness = wallVariant.metalness
+      // handle texture map for wall variant depending on useTextures flag
+      if (nextTheme.useTextures && wallVariant?.map) {
+        try {
+          photoTextureLoader.load(wallVariant.map, (tex) => {
+            tex.wrapS = tex.wrapT = THREE.RepeatWrapping
+            // use per-texture repeat when provided, otherwise default to 4x4
+            const wRepeat = Array.isArray(wallVariant.repeat) ? wallVariant.repeat : [4, 4]
+            tex.repeat.set(wRepeat[0], wRepeat[1])
+            tex.encoding = THREE.sRGBEncoding
+            wallMaterial.map = tex
+            wallMaterial.needsUpdate = true
+          }, undefined, () => {})
+        } catch (e) {
+          wallMaterial.map = null
+        }
+      } else {
+        if (wallMaterial.map) wallMaterial.map = null
+        wallMaterial.needsUpdate = true
+      }
+    }
+
+    if (floorMaterial) {
+      if (floorVariant?.roughness !== undefined) floorMaterial.roughness = floorVariant.roughness
+      if (floorVariant?.metalness !== undefined) floorMaterial.metalness = floorVariant.metalness
+      // handle texture map for floor variant
+      if (nextTheme.useTextures && floorVariant?.map) {
+        try {
+          photoTextureLoader.load(floorVariant.map, (tex) => {
+            tex.wrapS = tex.wrapT = THREE.RepeatWrapping
+            const fRepeat = Array.isArray(floorVariant.repeat) ? floorVariant.repeat : [6, 6]
+            tex.repeat.set(fRepeat[0], fRepeat[1])
+            tex.encoding = THREE.sRGBEncoding
+            floorMaterial.map = tex
+            floorMaterial.needsUpdate = true
+          }, undefined, () => {})
+        } catch (e) {
+          floorMaterial.map = null
+        }
+      } else {
+        if (floorMaterial.map) floorMaterial.map = null
+        floorMaterial.needsUpdate = true
+      }
+    }
+  } catch (e) {
+    // ignore variant application errors
   }
 
   if (persist) {
@@ -1809,6 +1921,7 @@ onBeforeUnmount(() => {
         :panel-type="activePanel"
         :current-room-theme="roomTheme"
         :room-themes="roomThemePresets"
+        :is-admin="effectiveRole === 'admin'"
         @add-asset="handleAddAsset"
         @apply-room-theme="handleApplyRoomTheme"
         @toggle-floor="toggleFloorVisibility"
