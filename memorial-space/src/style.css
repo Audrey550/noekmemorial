@@ -31,7 +31,7 @@
   --type-quote-line: 40px;
 
   --page-bg: #f6f0e8;
-  --page-bg-gradient: linear-gradient(90deg, rgba(213, 214, 237, 0.42) 0%, rgba(249, 226, 224, 0.34) 33%, rgba(252, 249, 239, 0.9) 100%);
+  --page-bg-gradient: #ffffff;
   --surface: rgba(255, 251, 247, 0.76);
   --surface-strong: rgba(255, 251, 247, 0.95);
   --surface-muted: rgba(255, 255, 255, 0.48);
