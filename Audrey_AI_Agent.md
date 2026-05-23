@@ -589,3 +589,15 @@ Update (2026-05-23, topnav restored): Brought the top navigation bar shell back,
 
 Update (2026-05-23, asset panel switching): Changed the left-toolbar panel switching so opening a different asset category closes the current panel first and then reopens the new one, avoiding the old panel lingering behind the new content.
 
+## Session Snapshot (2026-05-23 — Theme & Textures)
+
+- UI: Increased texture thumbnail size to 80×80 and set `background-size: cover` so thumbnails do not zoom or crop unexpectedly; active theme selection now uses a visible box-shadow/border rather than an overlay.
+- Controls: Added `Kleur / Textuur` toggle and admin-only `Use color` toggle (only visible to admins when textures are enabled). Thumbnails show horizontally only in Textuur mode.
+- Scene wiring: Introduced `useTextures` and `useColor` flags on the room theme state; `SceneCanvas.vue` normalizes these fields for backward compatibility and persists them to `localStorage`.
+- Materials: Loader now respects per-texture `repeat: [x,y]` values (defaults provided); support added for non-repeating rug textures (`repeat: [1,1]`) per request.
+- Lighting and preview parity: Added an explanatory tooltip noting thumbnails are unlit previews while the scene is lit; when `useColor === false` the material color is set to a neutral tint and roughness is increased slightly to avoid over-brightness under scene lighting.
+- Bugfix: Resolved `ReferenceError: floorVariant is not defined` by declaring `wallVariant` and `floorVariant` early in `applyRoomTheme()` and removing duplicate declarations — scene rendering restored.
+- Follow-ups: Fine-tune per-texture repeat values (esp. rugs/floor planks) and optionally replace native `title` tooltip with an accessible styled popover.
+
+Files changed in this slice: `memorial-space/src/components/AssetPanel.vue`, `memorial-space/src/components/SceneCanvas.vue`, and supporting CSS in the project stylesheet. Ready for your commit when you are.
+
