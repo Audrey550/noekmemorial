@@ -531,3 +531,45 @@ Tracker updated: 2026-05-22 evening snapshot added with achievements, open work,
 
 Tracker updated: 2026-05-22 late-evening layout pass and compile hotfix logged.
 
+## Session Snapshot (2026-05-23)
+
+- Added a models submenu UI to `AssetPanel.vue`: category buttons now show a selectable grid of models for the chosen category with a `Plaatsen` button to insert objects into the scene (emits `add-asset`).
+- Wired placement action to the existing `addObjectToScene()` flow in `SceneCanvas.vue` (uses GLTFLoader with placeholder fallback).
+- Updated tracker and TODOs to start the GLB/model integration work (next: add two demo GLB files to `public/models` and register them in `availableAssets`).
+
+If you'd like, I can add 2 lightweight demo GLB files to `memorial_space/public/models` next and register them in the asset list so real models appear in the panel.
+
+Update (2026-05-23): Adjusted Models panel behavior per user request — categories now appear in a left column and selecting a category opens a separate submenu panel on the right with model thumbnails and `Plaatsen` buttons. This matches the two-column master-detail flow from the MedFi screenshot while keeping the existing app layout.
+
+Update (2026-05-23, revision): Implemented the requested separate submenu behavior — clicking a category now opens a distinct submenu container next to the `Modellen` container (separate panel) instead of rendering items inside the same panel. This restores the visual separation and master/detail flow you wanted. Next: style the submenu to match the MedFi screenshot or add demo GLB files.
+
+- Added two lightweight procedural placeholder models for the `Meubels` category: `chair_01` (Stoel) and `table_01` (Bijzettafel). These are implemented in `SceneCanvas.vue`'s `createPlaceholderModel()` and are registered in the `availableAssets` list so they can be placed immediately from the Modellen submenu. They are intentionally simple (box-based) so they remain lightweight; we can replace them with real `.glb` files later.
+
+Update (2026-05-23, submenu placeholder items): Expanded the `Modellen` submenu into real placeholder cards per category. The right-side submenu now shows actionable items with name, short description, icon, and a `Plaatsen` button so the admin can begin populating the room immediately while the final GLB assets are still pending.
+
+Update (2026-05-23, submenu reposition): Moved the Models submenu wrapper back to the left side so it sits next to the `Assets` container again, matching the original layout direction instead of floating beside the `Modellen` panel.
+
+Update (2026-05-23, submenu spacing): Nudged the Models/submenu wrapper further to the right so it aligns more naturally beside the `Assets` container and leaves a clearer gap from the left edge.
+
+Update (2026-05-23, vertical centering): Shifted the full asset strip to vertical center alignment so the `Assets` panel, `Modellen` panel, and submenu line up on the same midline instead of sitting at different heights.
+
+Update (2026-05-23, equal spacing): Increased the horizontal gap between the `Modellen` panel and submenu to match the spacing between `Assets` and `Modellen` more closely.
+
+Update (2026-05-23, container spacing correction): Shifted the whole Models/submenu group slightly left so the outer container spacing lines up more naturally with the `Assets` panel instead of only changing the gap inside the Models group.
+
+Update (2026-05-23, submenu readability): Darkened the `Terug` button inside the Models submenu so it stays readable on the light submenu background.
+
+Update (2026-05-23, object color control): Added a color section to the selected-object inspector in `SceneCanvas.vue`. The admin can now recolor colorable objects with preset swatches or a custom color input, and the chosen color is stored in the scene state so it survives save/load.
+
+Update (2026-05-23, inspector layout): Moved the selection panel upward so it sits above the Save/Load dock instead of overlapping it, and resized the `Rotatie` and `Schaal` button grids so they match the `Verplaatsen` button sizing rhythm.
+
+Update (2026-05-23, topnav background): Removed the warm/yellowish tint from the page and editor stage backgrounds by switching them to a cooler neutral gradient, so the area behind the top navigation reads cleaner and lighter.
+
+Update (2026-05-23, topnav cleanup): Flattened the page and editor-stage backgrounds to plain white so there is no visible gradient strip behind the top navigation bar.
+
+Update (2026-05-23, topnav spacing): Increased the top bar's vertical margin so the editor has a bit more breathing room beneath the header.
+
+Update (2026-05-23, topnav shell removed): Made the top navigation container transparent and removed its border/shadow/radius so the header no longer appears as a separate bar.
+
+Update (2026-05-23, topnav restored): Brought the top navigation bar shell back, but kept it slimmer so it stays visible without crowding the editor options underneath.
+
