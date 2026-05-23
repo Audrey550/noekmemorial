@@ -16,11 +16,17 @@ const props = defineProps({
       presetId: 'soft-pink',
       wallShadeIndex: 2,
       floorShadeIndex: 2,
+      wallMaterialIndex: 0,
+      floorMaterialIndex: 0,
     }),
   },
   roomThemes: {
     type: Array,
     default: () => [],
+  },
+  isAdmin: {
+    type: Boolean,
+    default: false,
   },
 })
 
@@ -165,7 +171,51 @@ const selectedRoomTheme = computed(() => roomThemes.value.find(theme => theme.id
 
 const getRoomThemeRowSelection = (row) => row.find(theme => theme.id === selectedRoomThemeId.value) || null
 
-const selectedRoomThemeState = computed(() => props.currentRoomTheme || { presetId: 'soft-pink', wallShadeIndex: 2, floorShadeIndex: 2 })
+const selectedRoomThemeState = computed(() => props.currentRoomTheme || { presetId: 'soft-pink', wallShadeIndex: 2, floorShadeIndex: 2, wallMaterialIndex: 0, floorMaterialIndex: 0 })
+
+const applyUseTextures = (enabled) => {
+  if (!selectedRoomThemeId.value) {
+    // apply to current preset even if not explicitly selected
+    emit('apply-room-theme', { presetId: selectedRoomThemeState.value?.presetId || 'soft-pink', useTextures: enabled })
+    return
+  }
+
+  emit('apply-room-theme', { presetId: selectedRoomThemeId.value, useTextures: enabled })
+}
+
+const applyUseColor = (enabled) => {
+  if (!selectedRoomThemeId.value) {
+    emit('apply-room-theme', { presetId: selectedRoomThemeState.value?.presetId || 'soft-pink', useColor: enabled })
+    return
+  }
+
+  emit('apply-room-theme', { presetId: selectedRoomThemeId.value, useColor: enabled })
+}
+
+const toggleUseColor = () => {
+  const current = typeof selectedRoomThemeState.value?.useColor === 'boolean' ? selectedRoomThemeState.value.useColor : true
+  applyUseColor(!current)
+}
+
+const applyRoomMaterial = (target, materialIndex) => {
+  if (!selectedRoomThemeId.value) return
+  emit('apply-room-theme', {
+    presetId: selectedRoomThemeId.value,
+    [target === 'floor' ? 'floorMaterialIndex' : 'wallMaterialIndex']: materialIndex,
+  })
+}
+// UI-side defaults (match SceneCanvas defaults) — used when theme presets don't include material descriptors
+const uiWallMaterials = [
+  { id: 'whitepaper', label: 'White', map: '/textures/walls/wallpaper_whitepaper.jpg' },
+  { id: 'pinkbrick', label: 'Pink brick', map: '/textures/walls/wallpaper_pinkbrick.jpg' },
+  { id: 'greybrick', label: 'Grey brick', map: '/textures/walls/wallpaper_greybrick.jpg' },
+]
+
+const uiFloorMaterials = [
+  { id: 'wood_white', label: 'White beach', map: '/textures/floors/wood_whitebeach.jpg' },
+  { id: 'wood_dark', label: 'Dark brown', map: '/textures/floors/wood_darkbrown.jpg' },
+  { id: 'wood_bw', label: 'Black/white', map: '/textures/floors/wood_blackwhites.jpg' },
+]
 
 watch(() => props.currentRoomTheme?.presetId, (presetId) => {
   if (!presetId) return
@@ -722,36 +772,90 @@ const placeCandle = () => {
 
           <div v-if="getRoomThemeRowSelection(row)" class="room-shade-submenu">
             <template v-for="theme in [getRoomThemeRowSelection(row)]" :key="theme.id">
+              <div class="room-submenu-controls">
+                <div class="use-texture-toggle">
+                  <button type="button" :class="{ active: selectedRoomThemeState.useTextures === false }" @click="applyUseTextures(false)">Kleur</button>
+                  <button type="button" :class="{ active: selectedRoomThemeState.useTextures === true }" @click="applyUseTextures(true)">Textuur</button>
+                </div>
+                <div v-if="isAdmin && selectedRoomThemeState.useTextures" class="use-color-toggle">
+                  <button
+                    type="button"
+                    :class="{ active: selectedRoomThemeState.useColor !== false }"
+                    @click="toggleUseColor"
+                    :title="selectedRoomThemeState.useColor ? 'Kleur tonen (klik om uit te schakelen)' : 'Kleur verbergen (klik om aan te zetten)'"
+                    aria-pressed="selectedRoomThemeState.useColor !== false"
+                  >
+                    <span class="color-label">{{ selectedRoomThemeState.useColor ? 'Kleur aan' : 'Kleur uit' }}</span>
+                  </button>
+                </div>
+
+                <div class="preview-info" title="Miniatuurvoorbeelden (preview) zijn onbelicht; de scène gebruikt verlichting. Gebruik 'Kleur uit' om de kleurverf te verbergen zodat het materiaal puur zichtbaar is.">
+                  <span class="info-icon" aria-hidden="true">i</span>
+                  <span class="sr-only">Miniatuurvoorbeelden zijn onbelicht; de scène gebruikt verlichting. Gebruik 'Kleur uit' om de kleurverf te verbergen.</span>
+                </div>
+              </div>
               <div class="room-shade-group">
                 <span class="room-shade-group-label">Muren</span>
-                <div class="room-shade-row">
+                <div v-if="!selectedRoomThemeState.useTextures" class="room-shade-controls">
+                  <div class="room-shade-row">
+                    <button
+                      v-for="(shade, index) in theme.wallShades"
+                      :key="`${theme.id}-wall-${index}`"
+                      type="button"
+                      class="room-shade-swatch"
+                      :class="{ active: selectedRoomThemeState.presetId === theme.id && selectedRoomThemeState.wallShadeIndex === index }"
+                      :title="`Muur ${index + 1}`"
+                      @click="applyRoomShade('walls', index)"
+                    >
+                      <span class="room-shade-swatch-color" :style="{ backgroundColor: shade }"></span>
+                    </button>
+                  </div>
+                </div>
+
+                <div v-else class="room-materials-row-horizontal">
                   <button
-                    v-for="(shade, index) in theme.wallShades"
-                    :key="`${theme.id}-wall-${index}`"
+                    v-for="(mat, mIndex) in (theme.wallMaterials || uiWallMaterials)"
+                    :key="`${theme.id}-wall-mat-${mIndex}`"
                     type="button"
-                    class="room-shade-swatch"
-                    :class="{ active: selectedRoomThemeState.presetId === theme.id && selectedRoomThemeState.wallShadeIndex === index }"
-                    :title="`Muur ${index + 1}`"
-                    @click="applyRoomShade('walls', index)"
+                    class="room-material-chip room-material-thumb"
+                    :class="{ active: selectedRoomThemeState.presetId === theme.id && selectedRoomThemeState.wallMaterialIndex === mIndex }"
+                    @click="applyRoomMaterial('walls', mIndex)"
+                    :style="{ backgroundImage: mat.map ? 'url('+mat.map+')' : '' }"
                   >
-                    <span class="room-shade-swatch-color" :style="{ backgroundColor: shade }"></span>
+                    <span class="sr-only">{{ mat.label }}</span>
                   </button>
                 </div>
               </div>
 
               <div class="room-shade-group">
                 <span class="room-shade-group-label">Vloer</span>
-                <div class="room-shade-row">
+                <div v-if="!selectedRoomThemeState.useTextures" class="room-shade-controls">
+                  <div class="room-shade-row">
+                    <button
+                      v-for="(shade, index) in theme.floorShades"
+                      :key="`${theme.id}-floor-${index}`"
+                      type="button"
+                      class="room-shade-swatch"
+                      :class="{ active: selectedRoomThemeState.presetId === theme.id && selectedRoomThemeState.floorShadeIndex === index }"
+                      :title="`Vloer ${index + 1}`"
+                      @click="applyRoomShade('floor', index)"
+                    >
+                      <span class="room-shade-swatch-color" :style="{ backgroundColor: shade }"></span>
+                    </button>
+                  </div>
+                </div>
+
+                <div v-else class="room-materials-row-horizontal">
                   <button
-                    v-for="(shade, index) in theme.floorShades"
-                    :key="`${theme.id}-floor-${index}`"
+                    v-for="(mat, mIndex) in (theme.floorMaterials || uiFloorMaterials)"
+                    :key="`${theme.id}-floor-mat-${mIndex}`"
                     type="button"
-                    class="room-shade-swatch"
-                    :class="{ active: selectedRoomThemeState.presetId === theme.id && selectedRoomThemeState.floorShadeIndex === index }"
-                    :title="`Vloer ${index + 1}`"
-                    @click="applyRoomShade('floor', index)"
+                    class="room-material-chip room-material-thumb"
+                    :class="{ active: selectedRoomThemeState.presetId === theme.id && selectedRoomThemeState.floorMaterialIndex === mIndex }"
+                    @click="applyRoomMaterial('floor', mIndex)"
+                    :style="{ backgroundImage: mat.map ? 'url('+mat.map+')' : '' }"
                   >
-                    <span class="room-shade-swatch-color" :style="{ backgroundColor: shade }"></span>
+                    <span class="sr-only">{{ mat.label }}</span>
                   </button>
                 </div>
               </div>
@@ -1606,12 +1710,87 @@ const placeCandle = () => {
   align-self: stretch;
 }
 
+.room-submenu-controls {
+  display: flex;
+  justify-content: flex-start;
+  align-items: center;
+  margin-bottom: 6px;
+}
+
+.use-texture-toggle {
+  display: inline-flex;
+  gap: 6px;
+  background: rgba(18,18,18,0.03);
+  padding: 4px;
+  border-radius: 10px;
+}
+
+.use-texture-toggle button {
+  border: none;
+  background: transparent;
+  padding: 6px 8px;
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+.use-texture-toggle button.active {
+  background: rgba(125,95,161,0.12);
+  border: 1px solid rgba(125,95,161,0.92);
+}
+
+.use-color-toggle button {
+  padding: 6px 10px;
+  border-radius: 8px;
+  border: 1px solid rgba(54,42,92,0.06);
+  background: rgba(255,255,255,0.96);
+  cursor: pointer;
+  font-weight: 700;
+}
+
+.use-color-toggle button.active {
+  box-shadow: 0 0 0 3px rgba(125,95,161,0.16);
+  border-color: rgba(125,95,161,0.92);
+}
+
+.preview-info {
+  display: flex;
+  align-items: center;
+  margin-left: 8px;
+}
+
+.preview-info .info-icon {
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  display: inline-grid;
+  place-items: center;
+  background: rgba(18,18,18,0.04);
+  color: rgba(26,26,26,0.8);
+  font-size: 12px;
+  border: 1px solid rgba(54,42,92,0.06);
+  padding: 2px;
+}
+
 .room-shade-group {
   display: flex;
   flex-direction: column;
   gap: 10px;
   width: 100%;
   align-self: stretch;
+}
+
+.room-shade-controls {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+}
+
+.room-materials-col {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 86px;
+  align-items: flex-end;
 }
 
 .room-shade-group-label {
@@ -1629,6 +1808,15 @@ const placeCandle = () => {
   gap: 8px;
   justify-content: flex-start;
   width: 100%;
+}
+
+.room-materials-row-horizontal {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  width: 100%;
+  overflow-x: auto;
+  padding-top: 6px;
 }
 
 .room-shade-swatch {
@@ -1655,6 +1843,45 @@ const placeCandle = () => {
   height: 100%;
   border-radius: 6px;
 }
+
+.room-materials-row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.room-material-chip {
+  padding: 6px 8px;
+  border-radius: 10px;
+  background: rgba(18,18,18,0.03);
+  border: 1px solid rgba(54,42,92,0.06);
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.room-material-chip {
+  transition: box-shadow 0.18s ease, border-color 0.18s ease, transform 0.12s ease;
+}
+
+.room-material-chip.active {
+  box-shadow: 0 0 0 3px rgba(125,95,161,0.16);
+  border-color: rgba(125,95,161,0.92);
+  background-color: transparent;
+}
+
+.room-material-thumb {
+  width: 80px;
+  height: 80px;
+  padding: 0;
+  background-size: cover;
+  background-repeat: no-repeat;
+  background-position: center;
+  border-radius: 10px;
+  border: 1px solid rgba(54,42,92,0.08);
+  overflow: hidden;
+}
+
+.sr-only { position:absolute !important; width:1px; height:1px; padding:0; margin:-1px; overflow:hidden; clip:rect(0,0,0,0); white-space:nowrap; border:0; }
 
 .media-option-item {
   justify-content: flex-start;
