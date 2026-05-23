@@ -10,9 +10,21 @@ const props = defineProps({
     type: String,
     required: true,
   },
+  currentRoomTheme: {
+    type: Object,
+    default: () => ({
+      presetId: 'soft-pink',
+      wallShadeIndex: 2,
+      floorShadeIndex: 2,
+    }),
+  },
+  roomThemes: {
+    type: Array,
+    default: () => [],
+  },
 })
 
-const emit = defineEmits(['add-asset', 'toggle-floor', 'close-panel', 'place-photo', 'place-message', 'place-candle', 'place-audio', 'place-video'])
+const emit = defineEmits(['add-asset', 'toggle-floor', 'close-panel', 'apply-room-theme', 'place-photo', 'place-message', 'place-candle', 'place-audio', 'place-video'])
 
 const mediaMode = ref('chooser')
 const photoSourceMode = ref('gallery')
@@ -63,6 +75,7 @@ const candleSizes = [
 ]
 
 const panelTitle = {
+  room: 'Ruimte',
   media: 'Media',
   messages: 'Berichten',
   family: 'Kaarsje',
@@ -70,11 +83,116 @@ const panelTitle = {
 }
 
 const panelSubtitle = {
+  room: 'Kies een thema voor muren en vloer.',
   media: 'Voeg foto, audio of video toe aan de ruimte.',
   messages: 'Bekijk en verzamel herinneringen.',
   family: 'Laat een lichtje of familiebericht achter.',
   models: 'Kies een categorie en plaats objecten in de ruimte.',
 }
+
+const selectedRoomThemeId = ref('')
+
+const fallbackRoomThemes = [
+  {
+    id: 'soft-pink',
+    name: 'Zacht roze',
+    wallShades: ['#fde8ef', '#f8bfd0', '#f2afc7', '#e78ead', '#c66f8f'],
+    floorShades: ['#eceff2', '#d8dde3', '#c5ccd4', '#adb7c1', '#8e9aa7'],
+  },
+  {
+    id: 'warm-sand',
+    name: 'Warm zand',
+    wallShades: ['#f9efe1', '#f3e0c6', '#ebceaa', '#dcb886', '#c99b5f'],
+    floorShades: ['#f0e7db', '#ddd1c0', '#c8b39a', '#b09375', '#927458'],
+  },
+  {
+    id: 'cool-pearl',
+    name: 'Koel parel',
+    wallShades: ['#fbfcfe', '#f5f7fb', '#e7ecf2', '#d8e0e9', '#c2cfdb'],
+    floorShades: ['#eff3f6', '#dde3e9', '#c9d2db', '#b1bcc7', '#95a3b1'],
+  },
+  {
+    id: 'sage-mist',
+    name: 'Saliegroen',
+    wallShades: ['#eef3ee', '#dce8db', '#c5d4c6', '#aebcae', '#8f9e90'],
+    floorShades: ['#edf0ea', '#d8dfd4', '#c2cbbe', '#aab6a6', '#8f9b8d'],
+  },
+  {
+    id: 'dusty-rose',
+    name: 'Stofroze',
+    wallShades: ['#f9ebef', '#efc7d2', '#e4a7b8', '#cd8399', '#b25f76'],
+    floorShades: ['#ede7e6', '#d8cecb', '#c0b2ae', '#a58f8b', '#8b716f'],
+  },
+  {
+    id: 'linen-cloud',
+    name: 'Linnen',
+    wallShades: ['#fcf7ef', '#f4ead8', '#e7d9c3', '#d4c1a6', '#bea384'],
+    floorShades: ['#f1ece4', '#ddd6ca', '#c6b8a4', '#aa9780', '#8d7b68'],
+  },
+  {
+    id: 'mist-blue',
+    name: 'Mistblauw',
+    wallShades: ['#f4f8fb', '#dfeaf2', '#c8dae7', '#a9c1d4', '#879fb9'],
+    floorShades: ['#edf2f6', '#d8e1e8', '#c0cdd8', '#a6b5c5', '#8796a8'],
+  },
+  {
+    id: 'terracotta',
+    name: 'Terracotta',
+    wallShades: ['#f9ece5', '#e9c4b3', '#d79e85', '#bf7a61', '#9f5b45'],
+    floorShades: ['#efe1d7', '#dbc4b3', '#c4a08d', '#a97c67', '#88614f'],
+  },
+  {
+    id: 'charcoal-silk',
+    name: 'Zijdegrijs',
+    wallShades: ['#f4f4f5', '#e2e4e8', '#c9cdd4', '#a6adb8', '#7f8894'],
+    floorShades: ['#ececef', '#d8dbe0', '#c0c5cf', '#a2a9b5', '#808998'],
+  },
+]
+
+const roomThemes = computed(() => props.roomThemes.length ? props.roomThemes : fallbackRoomThemes)
+
+const roomThemeRows = computed(() => {
+  const rows = []
+
+  for (let index = 0; index < roomThemes.value.length; index += 3) {
+    rows.push(roomThemes.value.slice(index, index + 3))
+  }
+
+  return rows
+})
+
+const selectedRoomTheme = computed(() => roomThemes.value.find(theme => theme.id === selectedRoomThemeId.value) || roomThemes.value[0])
+
+const getRoomThemeRowSelection = (row) => row.find(theme => theme.id === selectedRoomThemeId.value) || null
+
+const selectedRoomThemeState = computed(() => props.currentRoomTheme || { presetId: 'soft-pink', wallShadeIndex: 2, floorShadeIndex: 2 })
+
+watch(() => props.currentRoomTheme?.presetId, (presetId) => {
+  if (!presetId) return
+  if (selectedRoomThemeId.value === '') {
+    selectedRoomThemeId.value = presetId
+  }
+})
+
+const selectRoomTheme = (themeId) => {
+  if (selectedRoomThemeId.value === themeId) {
+    selectedRoomThemeId.value = ''
+    return
+  }
+
+  selectedRoomThemeId.value = themeId
+  emit('apply-room-theme', { presetId: themeId })
+}
+
+const applyRoomShade = (target, shadeIndex) => {
+  if (!selectedRoomThemeId.value) return
+  emit('apply-room-theme', {
+    presetId: selectedRoomThemeId.value,
+    [target === 'floor' ? 'floorShadeIndex' : 'wallShadeIndex']: shadeIndex,
+  })
+}
+
+const isActiveTheme = (themeId) => selectedRoomThemeState.value?.presetId === themeId || selectedRoomThemeId.value === themeId
 
 // Models panel data (scaffold)
 const modelCategories = [
@@ -565,10 +683,11 @@ const placeCandle = () => {
 
       <div class="panel-actions">
         <button
+          v-if="props.panelType !== 'room'"
           type="button"
-            class="floor-panel-toggle"
-            :aria-pressed="showFloor"
-            :title="showFloor ? 'Verberg vloer' : 'Toon vloer'"
+          class="floor-panel-toggle"
+          :aria-pressed="showFloor"
+          :title="showFloor ? 'Verberg vloer' : 'Toon vloer'"
           @click="handleToggleFloor"
         >
           {{ showFloor ? 'Vloer aan' : 'Vloer uit' }}
@@ -580,7 +699,69 @@ const placeCandle = () => {
       </div>
     </div>
 
-    <div v-if="panelType === 'media' && mediaMode === 'chooser'" class="asset-grid media-chooser-grid">
+    <div v-if="panelType === 'room'" class="room-theme-panel">
+      <div class="room-theme-grid">
+        <div v-for="row in roomThemeRows" :key="row[0].id" class="room-theme-row">
+          <div class="room-theme-grid-row">
+            <div v-for="theme in row" :key="theme.id" class="room-theme-cell">
+              <button
+                type="button"
+                class="room-theme-card"
+                :class="{ active: isActiveTheme(theme.id) }"
+                :aria-expanded="selectedRoomThemeId === theme.id"
+                @click="selectRoomTheme(theme.id)"
+              >
+                <span class="room-theme-label">{{ theme.name }}</span>
+                <span class="room-theme-preview">
+                  <span class="room-theme-wall" :style="{ backgroundColor: theme.wallShades[2] || theme.wallShades[0] }"></span>
+                  <span class="room-theme-floor" :style="{ backgroundColor: theme.floorShades[2] || theme.floorShades[0] }"></span>
+                </span>
+              </button>
+            </div>
+          </div>
+
+          <div v-if="getRoomThemeRowSelection(row)" class="room-shade-submenu">
+            <template v-for="theme in [getRoomThemeRowSelection(row)]" :key="theme.id">
+              <div class="room-shade-group">
+                <span class="room-shade-group-label">Muren</span>
+                <div class="room-shade-row">
+                  <button
+                    v-for="(shade, index) in theme.wallShades"
+                    :key="`${theme.id}-wall-${index}`"
+                    type="button"
+                    class="room-shade-swatch"
+                    :class="{ active: selectedRoomThemeState.presetId === theme.id && selectedRoomThemeState.wallShadeIndex === index }"
+                    :title="`Muur ${index + 1}`"
+                    @click="applyRoomShade('walls', index)"
+                  >
+                    <span class="room-shade-swatch-color" :style="{ backgroundColor: shade }"></span>
+                  </button>
+                </div>
+              </div>
+
+              <div class="room-shade-group">
+                <span class="room-shade-group-label">Vloer</span>
+                <div class="room-shade-row">
+                  <button
+                    v-for="(shade, index) in theme.floorShades"
+                    :key="`${theme.id}-floor-${index}`"
+                    type="button"
+                    class="room-shade-swatch"
+                    :class="{ active: selectedRoomThemeState.presetId === theme.id && selectedRoomThemeState.floorShadeIndex === index }"
+                    :title="`Vloer ${index + 1}`"
+                    @click="applyRoomShade('floor', index)"
+                  >
+                    <span class="room-shade-swatch-color" :style="{ backgroundColor: shade }"></span>
+                  </button>
+                </div>
+              </div>
+            </template>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div v-else-if="panelType === 'media' && mediaMode === 'chooser'" class="asset-grid media-chooser-grid">
       <button
         v-for="option in [{ id: 'photo', label: 'Foto', icon: '🖼️' }, { id: 'audio', label: 'Audio', icon: '🎧' }, { id: 'video', label: 'Video', icon: '🎥' }]"
         :key="option.id"
@@ -1323,6 +1504,156 @@ const placeCandle = () => {
 
 .media-chooser-grid {
   padding-top: 16px;
+}
+
+.room-theme-panel {
+  padding: 14px 16px 10px 12px;
+  flex: 1;
+  overflow-y: auto;
+  scrollbar-gutter: stable;
+  overscroll-behavior: contain;
+}
+
+.room-theme-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  width: 100%;
+}
+
+.room-theme-row {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: 100%;
+}
+
+.room-theme-grid-row {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+  width: 100%;
+}
+
+.room-theme-cell {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  align-items: stretch;
+}
+
+.room-theme-card {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: 100%;
+  min-height: 96px;
+  padding: 10px 8px;
+  border: 1px solid rgba(54, 42, 92, 0.12);
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.92);
+  align-items: center;
+  justify-content: center;
+}
+
+.room-theme-card.active {
+  border-color: rgba(125, 95, 161, 0.92);
+  box-shadow: 0 0 0 3px rgba(125, 95, 161, 0.18), 0 10px 24px rgba(125, 95, 161, 0.14);
+  transform: translateY(-1px);
+}
+
+.room-theme-preview {
+  width: 48px;
+  height: 48px;
+  border-radius: 12px;
+  overflow: hidden;
+  border: 1px solid rgba(18, 18, 18, 0.08);
+  display: grid;
+  grid-template-rows: 1fr 0.45fr;
+  flex-shrink: 0;
+}
+
+.room-theme-wall,
+.room-theme-floor,
+.room-shade-swatch-color {
+  display: block;
+}
+
+.room-theme-floor {
+  border-top: 1px solid rgba(18, 18, 18, 0.08);
+}
+
+.room-theme-label {
+  font-family: 'Outfit', 'Segoe UI', sans-serif;
+  font-size: 12px;
+  font-weight: 700;
+  color: #1a1a1a;
+  text-align: center;
+  line-height: 1.1;
+}
+
+.room-shade-submenu {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: 16px;
+  border: 1px solid rgba(54, 42, 92, 0.1);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.96);
+  grid-column: 1 / -1;
+  width: 100%;
+  box-sizing: border-box;
+  align-self: stretch;
+}
+
+.room-shade-group {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  width: 100%;
+  align-self: stretch;
+}
+
+.room-shade-group-label {
+  font-family: 'Outfit', 'Segoe UI', sans-serif;
+  font-size: 12px;
+  font-weight: 800;
+  color: rgba(26, 26, 26, 0.75);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.room-shade-row {
+  display: grid;
+  grid-template-columns: repeat(5, 22px);
+  gap: 8px;
+  justify-content: flex-start;
+  width: 100%;
+}
+
+.room-shade-swatch {
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: 1px solid rgba(54, 42, 92, 0.12);
+  border-radius: 7px;
+  background: rgba(255, 255, 255, 0.9);
+  justify-self: center;
+  transition: box-shadow 0.18s ease, border-color 0.18s ease, transform 0.18s ease;
+  cursor: pointer;
+}
+
+.room-shade-swatch:hover,
+.room-shade-swatch.active {
+  border-color: rgba(125, 95, 161, 0.92);
+  box-shadow: 0 0 0 3px rgba(125, 95, 161, 0.16);
+  transform: translateY(-1px);
+}
+
+.room-shade-swatch-color {
+  width: 100%;
+  height: 100%;
+  border-radius: 6px;
 }
 
 .media-option-item {
