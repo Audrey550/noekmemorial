@@ -1,5 +1,5 @@
 <script setup>
-import { computed, defineEmits, defineProps, ref } from 'vue'
+import { computed, defineEmits, defineProps, ref, watch } from 'vue'
 
 const props = defineProps({
   showFloor: {
@@ -87,32 +87,48 @@ const modelCategories = [
 
 const selectedModelCategory = ref('meubels')
 
+const selectedModelCategoryLabel = computed(() => {
+  return modelCategories.find(category => category.id === selectedModelCategory.value)?.label || 'Items'
+})
+
+const selectedModelItems = computed(() => {
+  return modelBank[selectedModelCategory.value] || []
+})
+
 // simple scaffold of models per category (placeholders)
 const modelBank = {
   meubels: [
-    { id: 'chair_01', name: 'Stoel', thumb: null },
-    { id: 'table_01', name: 'Tafel', thumb: null },
-    { id: 'sofa_01', name: 'Bank', thumb: null },
+    { id: 'chair_01', name: 'Stoel', detail: 'Lichte houten stoel voor in een kamerhoek.', icon: '💺' },
+    { id: 'table_01', name: 'Bijzettafel', detail: 'Klein tafeltje voor een plant of kaars.', icon: '🪑' },
+    { id: 'sofa_01', name: 'Bank', detail: 'Compacte bank als extra meubelstuk.', icon: '🛋️' },
   ],
   planten: [
-    { id: 'plant_01', name: 'Monstera', thumb: null },
-    { id: 'plant_02', name: 'Vetplant', thumb: null },
+    { id: 'plant_01', name: 'Monstera', detail: 'Grote bladplant met rustige uitstraling.', icon: '🪴' },
+    { id: 'plant_02', name: 'Vetplant', detail: 'Klein en onderhoudsvriendelijk object.', icon: '🌵' },
   ],
   apparaten: [
-    { id: 'speaker_01', name: 'Luidspreker', thumb: null },
-    { id: 'lamp_01', name: 'Staande lamp', thumb: null },
+    { id: 'speaker_01', name: 'Luidspreker', detail: 'Decoratief audio-object voor de ruimte.', icon: '🔊' },
+    { id: 'lamp_01', name: 'Staande lamp', detail: 'Sfeerlamp voor extra warmte.', icon: '💡' },
   ],
   hobby: [
-    { id: 'guitar_01', name: 'Gitaar', thumb: null },
-    { id: 'bike_01', name: 'Fiets', thumb: null },
+    { id: 'guitar_01', name: 'Gitaar', detail: 'Persoonlijk object voor een hobbyhoek.', icon: '🎸' },
+    { id: 'bike_01', name: 'Fiets', detail: 'Decoratief object met wat meer volume.', icon: '🚲' },
   ],
   voertuigen: [
-    { id: 'car_01', name: 'Auto', thumb: null },
+    { id: 'car_01', name: 'Auto', detail: 'Klein voertuig voor een speels accent.', icon: '🚗' },
   ],
 }
 
+const showModelSubmenu = ref(false)
+
 const selectModelCategory = (catId) => {
   selectedModelCategory.value = catId
+  // open the separate submenu panel
+  showModelSubmenu.value = true
+}
+
+const closeModelSubmenu = () => {
+  showModelSubmenu.value = false
 }
 
 const placeModel = (model) => {
@@ -539,7 +555,8 @@ const placeCandle = () => {
 </script>
 
 <template>
-  <aside class="asset-panel" :class="{ 'models-mode': props.panelType === 'models' }">
+  <div class="asset-panel-root" :class="{ 'models-root': props.panelType === 'models' && showModelSubmenu }">
+    <aside class="asset-panel" :class="{ 'models-mode': props.panelType === 'models' }">
     <div class="panel-header">
       <div class="panel-heading">
         <h2>{{ panelHeading }}</h2>
@@ -576,7 +593,7 @@ const placeCandle = () => {
       </button>
     </div>
 
-    <div v-else-if="panelType === 'models'" class="models-panel models-simple">
+    <div v-else-if="panelType === 'models'" class="models-panel models-left-only">
       <div class="models-category-list simple-list">
         <button
           v-for="cat in modelCategories"
@@ -589,8 +606,6 @@ const placeCandle = () => {
           {{ cat.label }}
         </button>
       </div>
-
-      <!-- sample model thumbnails removed per design — only categories shown -->
     </div>
 
     <div v-else-if="panelType === 'media' && mediaMode === 'coming-soon'" class="media-placeholder">
@@ -968,14 +983,43 @@ const placeCandle = () => {
         </button>
       </section>
     </div>
-  </aside>
+    </aside>
+
+    <!-- Separate submenu panel that opens next to the main Modellen panel -->
+    <div v-if="panelType === 'models' && showModelSubmenu" class="models-submenu-panel">
+      <div class="submenu-header">
+        <button type="button" class="back-link" @click="closeModelSubmenu">← Terug</button>
+        <h3>{{ selectedModelCategoryLabel }}</h3>
+      </div>
+
+      <div class="models-submenu-scroll">
+        <p class="models-submenu-copy">
+          Kies een object om direct in de ruimte te plaatsen.
+        </p>
+
+        <div class="models-list-grid">
+          <div
+            v-for="model in selectedModelItems"
+            :key="model.id"
+            class="model-item"
+          >
+            <div class="model-thumb">{{ model.icon || '🔹' }}</div>
+            <div class="model-copy">
+              <div class="model-name">{{ model.name }}</div>
+              <p class="model-detail">{{ model.detail }}</p>
+            </div>
+            <div class="model-actions">
+              <button type="button" class="family-action" @click="placeModel(model)">Plaatsen</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
 </template>
 
 <style scoped>
 .asset-panel {
-  position: absolute;
-  right: 20px;
-  bottom: 16px;
   width: 340px;
   max-height: 78vh;
   background: #b8a4cb;
@@ -986,6 +1030,18 @@ const placeCandle = () => {
   display: flex;
   flex-direction: column;
   overflow: hidden;
+}
+
+.asset-panel-root {
+  position: absolute;
+  left: 232px;
+  top: 50%;
+  bottom: auto;
+  transform: translateY(-50%);
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  z-index: 1000;
 }
 
 .panel-header {
@@ -1071,11 +1127,6 @@ const placeCandle = () => {
 
 .models-mode {
   width: 260px; /* match Assets container width */
-  right: auto;
-  left: 266px; /* align with brand mark (padding + margin in header) */
-  top: 50%; /* vertically center like the left toolbar */
-  transform: translateY(-50%);
-  bottom: auto;
   max-height: calc(100vh - 120px);
   overflow-y: auto;
 }
@@ -1747,5 +1798,127 @@ input[type="file"][accept*="audio"] {
   .photo-flow-title h3 {
     font-size: 34px;
   }
+}
+
+/* Separate submenu panel that appears to the right of the Modellen container */
+.models-submenu-panel {
+  position: relative;
+  width: 320px;
+  max-height: 78vh;
+  background: #f6f1fa;
+  border: 1px solid rgba(54, 42, 92, 0.08);
+  border-radius: 18px;
+  box-shadow: 0 20px 48px rgba(20, 12, 40, 0.18);
+  overflow: hidden;
+  z-index: 1200;
+}
+
+.models-submenu-panel .submenu-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 14px;
+  border-bottom: 1px solid rgba(18,18,18,0.05);
+  background: linear-gradient(180deg, rgba(125,95,161,0.06), rgba(255,255,255,0.02));
+}
+
+.models-submenu-panel .back-link {
+  color: rgba(42, 29, 59, 0.78);
+  font-weight: 700;
+}
+
+.models-submenu-panel .back-link:hover {
+  color: #2a1d3b;
+}
+
+.models-submenu-panel .submenu-header h3 {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 800;
+  color: #2a1d3b;
+}
+
+.models-submenu-panel .models-submenu-scroll {
+  padding: 12px;
+  overflow-y: auto;
+  max-height: calc(78vh - 64px);
+}
+
+.models-submenu-copy {
+  margin: 0 0 12px;
+  font-family: 'Outfit', 'Segoe UI', sans-serif;
+  font-size: 13px;
+  line-height: 1.45;
+  color: rgba(42, 29, 59, 0.76);
+}
+
+.models-list-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 12px;
+}
+
+.model-item {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+  padding: 12px;
+  background: #ffffff;
+  border-radius: 12px;
+  border: 1px solid rgba(18,18,18,0.06);
+}
+
+.model-thumb {
+  width: 64px;
+  height: 64px;
+  border-radius: 8px;
+  background: linear-gradient(180deg,#f3f3f6,#e9e7ef);
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  font-size:20px;
+}
+
+.model-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  flex: 1;
+}
+
+.model-name {
+  font-weight:700;
+  color:#1a1a1a;
+}
+
+.model-detail {
+  margin: 0;
+  font-family: 'Outfit', 'Segoe UI', sans-serif;
+  font-size: 12px;
+  line-height: 1.45;
+  color: rgba(26, 26, 26, 0.72);
+}
+
+.model-actions {
+  margin-left: auto;
+  padding-top: 2px;
+}
+
+.model-actions .family-action {
+  border-radius: 18px;
+  padding: 8px 14px;
+  background: linear-gradient(180deg,#fdeff6,#f6e6f0);
+  border: 1px solid rgba(195,121,166,0.18);
+}
+
+@media (max-width: 1100px) {
+  .asset-panel-root {
+    left: 12px;
+    top: 50%;
+    bottom: auto;
+    transform: translateY(-50%);
+  }
+
+  .models-submenu-panel { display: none; }
 }
 </style>
