@@ -15,6 +15,11 @@ const username = ref('Naam')
 const roomPrivacy = ref('private')
 const roomInviteCode = ref(null)
 const roomName = ref('')
+const roomTheme = ref({
+  presetId: 'soft-pink',
+  wallShadeIndex: 2,
+  floorShadeIndex: 2,
+})
 const roomSettingsError = ref('')
 const roomSettingsSuccess = ref('')
 const roomMembers = ref([])
@@ -106,6 +111,9 @@ let scene = null
 let room = null
 let camera = null
 let floorMesh = null
+let floorMaterial = null
+let wallMaterial = null
+let trimMaterial = null
 let roomShadow = null
 const profileMenuElement = ref(null)
 let selectionHelper = null
@@ -114,6 +122,98 @@ let gltfLoader = new GLTFLoader()
 let photoTextureLoader = new THREE.TextureLoader()
 let raycaster = new THREE.Raycaster()
 let pointer = new THREE.Vector2()
+let panelSwitchTimer = null
+
+const roomThemePresets = [
+  {
+    id: 'soft-pink',
+    name: 'Zacht roze',
+    wallShades: ['#fde8ef', '#f8bfd0', '#f2afc7', '#e78ead', '#c66f8f'],
+    floorShades: ['#eceff2', '#d8dde3', '#c5ccd4', '#adb7c1', '#8e9aa7'],
+    trim: '#f6e9f0',
+  },
+  {
+    id: 'warm-sand',
+    name: 'Warm zand',
+    wallShades: ['#f9efe1', '#f3e0c6', '#ebceaa', '#dcb886', '#c99b5f'],
+    floorShades: ['#f0e7db', '#ddd1c0', '#c8b39a', '#b09375', '#927458'],
+    trim: '#f6efe6',
+  },
+  {
+    id: 'cool-pearl',
+    name: 'Koel parel',
+    wallShades: ['#fbfcfe', '#f5f7fb', '#e7ecf2', '#d8e0e9', '#c2cfdb'],
+    floorShades: ['#eff3f6', '#dde3e9', '#c9d2db', '#b1bcc7', '#95a3b1'],
+    trim: '#e7ecf2',
+  },
+  {
+    id: 'sage-mist',
+    name: 'Saliegroen',
+    wallShades: ['#eef3ee', '#dce8db', '#c5d4c6', '#aebcae', '#8f9e90'],
+    floorShades: ['#edf0ea', '#d8dfd4', '#c2cbbe', '#aab6a6', '#8f9b8d'],
+    trim: '#eef3ee',
+  },
+  {
+    id: 'dusty-rose',
+    name: 'Stofroze',
+    wallShades: ['#f9ebef', '#efc7d2', '#e4a7b8', '#cd8399', '#b25f76'],
+    floorShades: ['#ede7e6', '#d8cecb', '#c0b2ae', '#a58f8b', '#8b716f'],
+    trim: '#f4e7ec',
+  },
+  {
+    id: 'linen-cloud',
+    name: 'Linnen',
+    wallShades: ['#fcf7ef', '#f4ead8', '#e7d9c3', '#d4c1a6', '#bea384'],
+    floorShades: ['#f1ece4', '#ddd6ca', '#c6b8a4', '#aa9780', '#8d7b68'],
+    trim: '#f7f0e5',
+  },
+  {
+    id: 'mist-blue',
+    name: 'Mistblauw',
+    wallShades: ['#f4f8fb', '#dfeaf2', '#c8dae7', '#a9c1d4', '#879fb9'],
+    floorShades: ['#edf2f6', '#d8e1e8', '#c0cdd8', '#a6b5c5', '#8796a8'],
+    trim: '#eaf1f6',
+  },
+  {
+    id: 'terracotta',
+    name: 'Terracotta',
+    wallShades: ['#f9ece5', '#e9c4b3', '#d79e85', '#bf7a61', '#9f5b45'],
+    floorShades: ['#efe1d7', '#dbc4b3', '#c4a08d', '#a97c67', '#88614f'],
+    trim: '#f4e7de',
+  },
+  {
+    id: 'charcoal-silk',
+    name: 'Zijdegrijs',
+    wallShades: ['#f4f4f5', '#e2e4e8', '#c9cdd4', '#a6adb8', '#7f8894'],
+    floorShades: ['#ececef', '#d8dbe0', '#c0c5cf', '#a2a9b5', '#808998'],
+    trim: '#eef0f3',
+  },
+]
+
+const getRoomThemePreset = (presetId) => roomThemePresets.find(theme => theme.id === presetId) || roomThemePresets[0]
+
+const clampShadeIndex = (index, maxIndex) => {
+  const numericIndex = Number.isFinite(Number(index)) ? Number(index) : 2
+  return Math.min(Math.max(numericIndex, 0), maxIndex)
+}
+
+const normalizeRoomThemeState = (value) => {
+  if (typeof value === 'string') {
+    return {
+      presetId: value,
+      wallShadeIndex: 2,
+      floorShadeIndex: 2,
+    }
+  }
+
+  const presetId = value?.presetId || 'soft-pink'
+  const preset = getRoomThemePreset(presetId)
+  return {
+    presetId,
+    wallShadeIndex: clampShadeIndex(value?.wallShadeIndex, preset.wallShades.length - 1),
+    floorShadeIndex: clampShadeIndex(value?.floorShadeIndex, preset.floorShades.length - 1),
+  }
+}
 
 const objectColorPalette = ['#3c3c3c', '#8d8d8d', '#f2f2f2', '#c8a4b8', '#a8d7ef', '#a8d7b4', '#d7b98f', '#f0d89a']
 const colorableAssetIds = new Set([
@@ -239,15 +339,18 @@ const loadRoomMeta = () => {
       roomPrivacy.value = data.privacy || 'private'
       roomInviteCode.value = data.inviteCode || null
       roomName.value = data.name || ''
+      roomTheme.value = normalizeRoomThemeState(data.theme || roomTheme.value)
     } else {
       roomPrivacy.value = 'private'
       roomInviteCode.value = null
       roomName.value = ''
+      roomTheme.value = normalizeRoomThemeState('soft-pink')
     }
   } catch (e) {
     roomPrivacy.value = 'private'
     roomInviteCode.value = null
     roomName.value = ''
+    roomTheme.value = normalizeRoomThemeState('soft-pink')
   }
 
   // load members
@@ -264,7 +367,7 @@ const loadRoomMeta = () => {
 const saveRoomMeta = () => {
   const id = props.roomId || 'default'
   try {
-    localStorage.setItem(`audreyRoom_${id}`, JSON.stringify({ privacy: roomPrivacy.value, inviteCode: roomInviteCode.value, name: roomName.value }))
+    localStorage.setItem(`audreyRoom_${id}`, JSON.stringify({ privacy: roomPrivacy.value, inviteCode: roomInviteCode.value, name: roomName.value, theme: roomTheme.value }))
   } catch (e) {}
   try {
     localStorage.setItem(`audreyRoomMembers_${id}`, JSON.stringify(roomMembers.value))
@@ -314,6 +417,41 @@ const saveRoomMembers = () => {
   } catch (e) {}
 }
 
+const applyRoomTheme = (themeUpdate, persist = true) => {
+  const incomingTheme = typeof themeUpdate === 'string' ? { presetId: themeUpdate } : themeUpdate || {}
+  const presetChanged = incomingTheme.presetId && incomingTheme.presetId !== roomTheme.value.presetId
+
+  const nextTheme = normalizeRoomThemeState({
+    ...roomTheme.value,
+    ...incomingTheme,
+    ...(presetChanged && incomingTheme.wallShadeIndex === undefined && incomingTheme.floorShadeIndex === undefined
+      ? { wallShadeIndex: 2, floorShadeIndex: 2 }
+      : {}),
+  })
+
+  const preset = getRoomThemePreset(nextTheme.presetId)
+  const wallColor = preset.wallShades[nextTheme.wallShadeIndex] || preset.wallShades[2] || preset.wallShades[0]
+  const floorColor = preset.floorShades[nextTheme.floorShadeIndex] || preset.floorShades[2] || preset.floorShades[0]
+
+  roomTheme.value = nextTheme
+
+  if (floorMaterial?.color) {
+    floorMaterial.color.set(floorColor)
+  }
+
+  if (wallMaterial?.color) {
+    wallMaterial.color.set(wallColor)
+  }
+
+  if (trimMaterial?.color) {
+    trimMaterial.color.set(preset.trim)
+  }
+
+  if (persist) {
+    saveRoomMeta()
+  }
+}
+
 const inviteMember = () => {
   if (!inviteEmail.value) return alert('Geef een e-mailadres op om uit te nodigen')
   const id = `m_${Date.now()}`
@@ -340,6 +478,10 @@ const toggleBlockMember = (id) => {
   m.status = m.status === 'blocked' ? 'active' : 'blocked'
   saveRoomMembers()
   try { logEvent('member.toggled_block', { memberId: id, newStatus: m.status }) } catch (e) {}
+}
+
+const handleApplyRoomTheme = (themeUpdate) => {
+  applyRoomTheme(themeUpdate)
 }
 
 const deleteRoom = () => {
@@ -494,8 +636,23 @@ const loadSceneFromStorage = async () => {
 }
 
 const openQuickPanel = (panelType) => {
+  if (panelSwitchTimer) {
+    clearTimeout(panelSwitchTimer)
+    panelSwitchTimer = null
+  }
+
   if (activePanel.value === panelType && showQuickPanel.value) {
     showQuickPanel.value = false
+    return
+  }
+
+  if (showQuickPanel.value) {
+    showQuickPanel.value = false
+    panelSwitchTimer = setTimeout(() => {
+      activePanel.value = panelType
+      showQuickPanel.value = true
+      panelSwitchTimer = null
+    }, 120)
     return
   }
 
@@ -504,6 +661,10 @@ const openQuickPanel = (panelType) => {
 }
 
 const closeQuickPanel = () => {
+  if (panelSwitchTimer) {
+    clearTimeout(panelSwitchTimer)
+    panelSwitchTimer = null
+  }
   showQuickPanel.value = false
 }
 
@@ -1286,19 +1447,21 @@ onMounted(() => {
   room = new THREE.Group()
   room.position.y = 0.62
 
+  floorMaterial = new THREE.MeshStandardMaterial({
+    color: '#838991',
+    roughness: 0.84,
+    metalness: 0,
+  })
+
   floorMesh = new THREE.Mesh(
     new THREE.PlaneGeometry(9, 9),
-    new THREE.MeshStandardMaterial({
-      color: '#838991',
-      roughness: 0.84,
-      metalness: 0,
-    }),
+    floorMaterial,
   )
   floorMesh.rotation.x = -Math.PI / 2
   floorMesh.receiveShadow = true
   room.add(floorMesh)
 
-  const wallMaterial = new THREE.MeshStandardMaterial({
+  wallMaterial = new THREE.MeshStandardMaterial({
     color: '#f2afc7',
     roughness: 0.88,
     metalness: 0.02,
@@ -1315,7 +1478,7 @@ onMounted(() => {
   backWall.receiveShadow = true
   room.add(backWall)
 
-  const trimMaterial = new THREE.MeshStandardMaterial({
+  trimMaterial = new THREE.MeshStandardMaterial({
     color: '#f6e9f0',
     roughness: 0.7,
   })
@@ -1432,6 +1595,8 @@ onMounted(() => {
   const hemisphereLight = new THREE.HemisphereLight('#fff4fa', '#aeb4bf', 1.55)
   hemisphereLight.position.set(0, 14, 0)
   scene.add(hemisphereLight)
+
+  applyRoomTheme(roomTheme.value, false)
 
   const keyLight = new THREE.DirectionalLight('#fff5fb', 1.6)
   keyLight.position.set(8, 14, 9)
@@ -1613,7 +1778,7 @@ onBeforeUnmount(() => {
           <h3 class="left-toolbar-title">Assets</h3>
 
           <nav class="action-dock column" aria-label="Snelle acties">
-            <button type="button" class="dock-button" @click="openRoomSettings">
+            <button type="button" class="dock-button" :class="{ active: showQuickPanel && activePanel === 'room' }" @click="openQuickPanel('room')">
               <span class="dock-icon">🏠</span>
               <span class="dock-label">Ruimte</span>
             </button>
@@ -1642,7 +1807,10 @@ onBeforeUnmount(() => {
         v-if="showQuickPanel && effectiveRole !== 'viewer'"
         :show-floor="showFloor"
         :panel-type="activePanel"
+        :current-room-theme="roomTheme"
+        :room-themes="roomThemePresets"
         @add-asset="handleAddAsset"
+        @apply-room-theme="handleApplyRoomTheme"
         @toggle-floor="toggleFloorVisibility"
         @close-panel="closeQuickPanel"
         @place-photo="handlePlacePhoto"
