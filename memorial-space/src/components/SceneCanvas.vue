@@ -84,6 +84,7 @@ const selectedSceneObjectId = ref(null)
 const selectedSceneObject = ref(null)
 const selectedSceneObjectType = ref('')
 const selectedSceneObjectLabel = ref('')
+const selectedSceneObjectColor = ref('#3c3c3c')
 const transformStep = 0.2
 const rotateStep = Math.PI / 12
 const scaleStep = 0.1
@@ -114,11 +115,96 @@ let photoTextureLoader = new THREE.TextureLoader()
 let raycaster = new THREE.Raycaster()
 let pointer = new THREE.Vector2()
 
+const objectColorPalette = ['#3c3c3c', '#8d8d8d', '#f2f2f2', '#c8a4b8', '#a8d7ef', '#a8d7b4', '#d7b98f', '#f0d89a']
+const colorableAssetIds = new Set([
+  'candle',
+  'photo-frame',
+  'flower',
+  'chair_01',
+  'table_01',
+  'sofa_01',
+  'plant_01',
+  'plant_02',
+  'speaker_01',
+  'lamp_01',
+  'guitar_01',
+  'bike_01',
+  'car_01',
+])
+
+const canEditSelectedObjectColor = computed(() => colorableAssetIds.has(selectedSceneObjectType.value))
+
+const normalizeHexColor = (value) => {
+  try {
+    return `#${new THREE.Color(value).getHexString()}`
+  } catch (e) {
+    return '#3c3c3c'
+  }
+}
+
+const extractObjectColor = (object) => {
+  let currentObject = object
+
+  while (currentObject) {
+    if (currentObject.isMesh && currentObject.material) {
+      const material = Array.isArray(currentObject.material) ? currentObject.material[0] : currentObject.material
+      if (material && material.color) {
+        return `#${material.color.getHexString()}`
+      }
+    }
+
+    currentObject = currentObject.parent
+  }
+
+  return '#3c3c3c'
+}
+
+const applyColorToObject = (object, colorValue) => {
+  const normalizedColor = normalizeHexColor(colorValue)
+
+  if (!object) {
+    return normalizedColor
+  }
+
+  object.traverse((child) => {
+    if (!child.isMesh || !child.material) {
+      return
+    }
+
+    const materials = Array.isArray(child.material) ? child.material : [child.material]
+
+    materials.forEach((material) => {
+      if (!material || !material.color) {
+        return
+      }
+
+      material.color.set(normalizedColor)
+      material.needsUpdate = true
+    })
+  })
+
+  return normalizedColor
+}
+
+const applyColorToSelectedObject = (colorValue) => {
+  const record = selectedSceneObject.value
+
+  if (!record?.object || !canEditSelectedObjectColor.value) {
+    return
+  }
+
+  const normalizedColor = applyColorToObject(record.object, colorValue)
+  record.color = normalizedColor
+  selectedSceneObjectColor.value = normalizedColor
+}
+
 // Available models for the asset panel
 const availableAssets = [
   { id: 'candle', name: 'Kaars', icon: '🕯️', file: '/models/candle.glb' },
   { id: 'photo-frame', name: 'Fotolijst', icon: '🖼️', file: '/models/photo-frame.glb' },
   { id: 'flower', name: 'Bloem', icon: '🌹', file: '/models/flower.glb' },
+  { id: 'chair_01', name: 'Stoel', icon: '💺', file: '/models/chair_01.glb' },
+  { id: 'table_01', name: 'Bijzettafel', icon: '🛋️', file: '/models/table_01.glb' },
 ]
 
 // Serialize scene state to JSON for localStorage
@@ -137,6 +223,7 @@ const serializeSceneState = () => {
       videoData: record.videoData || null,
       messageData: record.messageData || null,
       candleData: record.candleData || null,
+      color: record.color || extractObjectColor(record.object),
     })),
   }
   return JSON.stringify(state)
@@ -329,14 +416,37 @@ const deserializeSceneState = async (jsonString) => {
         createSceneObjectRecord(messageGroup, objData.assetId, { messageData: objData.messageData })
         sceneObjects.value[sceneObjects.value.length - 1].id = objData.id
         messageGroup.userData.sceneObjectId = objData.id
-      } else if (['candle', 'photo-frame', 'flower'].includes(objData.assetId)) {
-        // For 3D asset types, create placeholder
-        let model = createPlaceholderModel(objData.assetId)
+      } else if (objData.assetId && colorableAssetIds.has(objData.assetId)) {
+        let model = null
+
+        if (['candle', 'photo-frame', 'flower'].includes(objData.assetId)) {
+          model = createPlaceholderModel(objData.assetId)
+        } else {
+          const asset = availableAssets.find(a => a.id === objData.assetId)
+
+          try {
+            if (asset && asset.file) {
+              const gltf = await gltfLoader.loadAsync(asset.file)
+              model = gltf.scene.clone()
+            } else {
+              throw new Error('No asset file')
+            }
+          } catch (error) {
+            console.log(`Creating placeholder for ${objData.assetId}`)
+            model = createPlaceholderModel(objData.assetId)
+          }
+        }
+
         model.position.set(objData.position.x, objData.position.y, objData.position.z)
         model.rotation.set(objData.rotation.x, objData.rotation.y, objData.rotation.z)
         model.scale.set(objData.scale.x, objData.scale.y, objData.scale.z)
+
+        if (objData.color) {
+          applyColorToObject(model, objData.color)
+        }
+
         room.add(model)
-        createSceneObjectRecord(model, objData.assetId, {})
+        createSceneObjectRecord(model, objData.assetId, { color: objData.color || extractObjectColor(model) })
         sceneObjects.value[sceneObjects.value.length - 1].id = objData.id
         model.userData.sceneObjectId = objData.id
       }
@@ -436,6 +546,7 @@ const createSceneObjectRecord = (object, assetId, payload = {}) => {
     position: object.position.clone(),
     rotation: object.rotation.clone(),
     scale: object.scale.clone(),
+    color: payload.color || extractObjectColor(object),
     ...payload,
   }
 
@@ -713,6 +824,7 @@ const clearSceneSelection = () => {
   selectedSceneObject.value = null
   selectedSceneObjectType.value = ''
   selectedSceneObjectLabel.value = ''
+  selectedSceneObjectColor.value = '#3c3c3c'
   clearSelectionHelper()
 }
 
@@ -764,6 +876,7 @@ const selectSceneObject = (record) => {
     || record.candleData?.name
     || record.messageData?.message
     || record.assetId
+  selectedSceneObjectColor.value = record.color || extractObjectColor(record.object)
   updateSelectionHelper(record.object)
 }
 
@@ -918,6 +1031,66 @@ const createPlaceholderModel = (assetId) => {
     petal.position.y = 0.3
     petal.castShadow = true
     group.add(petal)
+  }
+  else if (assetId === 'chair_01') {
+    // Simple chair placeholder: seat, back, and legs
+    const seatMat = new THREE.MeshStandardMaterial({ color: '#8b6b4b', roughness: 0.6 })
+    const legMat = new THREE.MeshStandardMaterial({ color: '#5a3f2b', roughness: 0.7 })
+
+    const seat = new THREE.Mesh(new THREE.BoxGeometry(0.6, 0.12, 0.6), seatMat)
+    seat.position.y = 0.18
+    seat.castShadow = true
+    group.add(seat)
+
+    const back = new THREE.Mesh(new THREE.BoxGeometry(0.6, 0.6, 0.08), seatMat)
+    back.position.set(0, 0.55, -0.26)
+    back.castShadow = true
+    group.add(back)
+
+    const legGeo = new THREE.BoxGeometry(0.08, 0.36, 0.08)
+    const legPositions = [
+      [-0.26, -0.0, -0.26],
+      [0.26, -0.0, -0.26],
+      [-0.26, -0.0, 0.26],
+      [0.26, -0.0, 0.26],
+    ]
+
+    legPositions.forEach((p) => {
+      const leg = new THREE.Mesh(legGeo, legMat)
+      leg.position.set(p[0], -0.0, p[2])
+      leg.castShadow = true
+      group.add(leg)
+    })
+
+    group.scale.set(1, 1, 1)
+    group.position.y = 0.18
+  } else if (assetId === 'table_01') {
+    // Simple side table placeholder: top and four legs
+    const topMat = new THREE.MeshStandardMaterial({ color: '#d9c6b3', roughness: 0.65 })
+    const legMat = new THREE.MeshStandardMaterial({ color: '#b08a65', roughness: 0.7 })
+
+    const top = new THREE.Mesh(new THREE.BoxGeometry(1.0, 0.08, 0.6), topMat)
+    top.position.y = 0.35
+    top.castShadow = true
+    group.add(top)
+
+    const legGeo = new THREE.BoxGeometry(0.08, 0.7, 0.08)
+    const legPositions = [
+      [-0.44, -0.0, -0.26],
+      [0.44, -0.0, -0.26],
+      [-0.44, -0.0, 0.26],
+      [0.44, -0.0, 0.26],
+    ]
+
+    legPositions.forEach((p) => {
+      const leg = new THREE.Mesh(legGeo, legMat)
+      leg.position.set(p[0], -0.0, p[2])
+      leg.castShadow = true
+      group.add(leg)
+    })
+
+    group.scale.set(1, 1, 1)
+    group.position.y = 0.35
   }
   
   return group
@@ -1523,6 +1696,34 @@ onBeforeUnmount(() => {
             <button type="button" class="selection-hint-close" @click="dismissDeleteHint" aria-label="Sluit hint">×</button>
           </div>
 
+          <div v-if="canEditSelectedObjectColor" class="control-group color-group">
+            <div class="control-label">Kleur</div>
+            <div class="color-row">
+              <div class="color-swatch-grid" role="group" aria-label="Kleuropties">
+                <button
+                  v-for="color in objectColorPalette"
+                  :key="color"
+                  type="button"
+                  class="color-swatch"
+                  :class="{ active: selectedSceneObjectColor === color }"
+                  :style="{ backgroundColor: color }"
+                  :title="color"
+                  @click="applyColorToSelectedObject(color)"
+                />
+              </div>
+
+              <label class="color-picker-field">
+                <span>Eigen kleur</span>
+                <input
+                  :value="selectedSceneObjectColor"
+                  type="color"
+                  class="color-picker-input"
+                  @input="applyColorToSelectedObject(($event.target).value)"
+                />
+              </label>
+            </div>
+          </div>
+
         <div class="selection-controls">
           <div class="control-group">
             <div class="control-label">Verplaatsen</div>
@@ -1718,13 +1919,13 @@ onBeforeUnmount(() => {
   justify-content: space-between;
   align-items: center;
   color: #101010;
-  background: rgba(255, 255, 255, 0.62);
+  background: rgba(255, 255, 255, 0.9);
   border-bottom: 1px solid #d8d8d8;
   border-radius: 30px;
   backdrop-filter: blur(12px);
   box-shadow: 0 5px 10px 0 rgba(0, 0, 0, 0.2);
-  padding: 16px 38px;
-  margin: 30px 228px;
+  padding: 14px 32px;
+  margin: 18px 228px 12px;
   position: relative;
   z-index: 10010;
 }
@@ -1972,7 +2173,7 @@ onBeforeUnmount(() => {
   flex: 1;
   min-height: 0;
   position: relative;
-  background: linear-gradient(145deg, #f6f0f6 0%, #f3f5f7 42%, #eef4f7 100%);
+  background: #ffffff;
   overflow: hidden;
 }
 
@@ -2119,7 +2320,7 @@ onBeforeUnmount(() => {
 .selection-panel {
   position: absolute;
   right: 20px;
-  top: 86px;
+  bottom: 92px;
   width: 310px;
   max-height: 70vh;
   padding: 16px;
@@ -2186,6 +2387,68 @@ onBeforeUnmount(() => {
   cursor: pointer;
 }
 
+.color-group {
+  margin-top: 8px;
+  padding: 12px;
+  border-radius: 14px;
+  background: rgba(242, 175, 199, 0.08);
+  border: 1px solid rgba(242, 175, 199, 0.18);
+}
+
+.color-row {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.color-swatch-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 8px;
+}
+
+.color-swatch {
+  width: 100%;
+  aspect-ratio: 1;
+  border-radius: 12px;
+  border: 2px solid rgba(31, 26, 59, 0.12);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.28);
+}
+
+.color-swatch.active {
+  border-color: #1f1a3b;
+  box-shadow: 0 0 0 2px rgba(31, 26, 59, 0.14);
+}
+
+.color-picker-field {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  font-family: 'Outfit', 'Segoe UI', sans-serif;
+  font-size: 12px;
+  font-weight: 600;
+  color: #666666;
+}
+
+.color-picker-input {
+  width: 44px;
+  height: 36px;
+  border: none;
+  border-radius: 10px;
+  background: transparent;
+  padding: 0;
+}
+
+.color-picker-input::-webkit-color-swatch-wrapper {
+  padding: 0;
+}
+
+.color-picker-input::-webkit-color-swatch {
+  border: 1px solid rgba(31, 26, 59, 0.18);
+  border-radius: 10px;
+}
+
 .selection-delete-button {
   border: none;
   border-radius: 12px;
@@ -2230,11 +2493,11 @@ onBeforeUnmount(() => {
 }
 
 .rotate-grid {
-  grid-template-columns: repeat(2, 1fr);
+  grid-template-columns: repeat(3, 1fr);
 }
 
 .scale-grid {
-  grid-template-columns: repeat(2, 1fr);
+  grid-template-columns: repeat(3, 1fr);
 }
 
 .selection-icon-button {
