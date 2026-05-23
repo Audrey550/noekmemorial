@@ -68,6 +68,8 @@ This is the running log for the work we do in this project. I will keep it updat
 | 2026-05-04 | Compile the two .gitignore files into one and update the tracker accordingly. | Done | Merged memorial-space/.gitignore into the root .gitignore and removed the duplicate file. |
 | 2026-05-04 | Start week 1 project tasks and complete the first two tasks for today. | Done | Replaced the starter screen with a Three.js room scene, OrbitControls, lighting, and a responsive editor layout. |
 | 2026-05-05 | Review what was done yesterday, define today's work, and keep the tracker updates explicit. | Done | Added a yesterday recap, today's checklist, and a standing note to confirm tracker updates in chat. |
+| 2026-05-23 | Make the Ruimte theme tiles smaller and add wall/floor shade submenus. | Done | Reworked the room panel into a 3x3 theme grid with compact tiles and separate wall/floor shade pickers under each selected theme. |
+| 2026-05-22 | Change the Assets 'Ruimte' button from room settings to wall/floor themes. | Done | Added a dedicated room theme panel, wired theme persistence into room meta, and connected the toolbar button to open the new panel. |
 | 2026-05-21 | Improve the admin pre-page room cards. | Done | Replaced the plain room list with cards, added masked invite code reveal, and tuned the alignment and spacing for a less cramped admin view. |
 | 2026-05-21 | Align the room card with the section title. | Done | Removed the centered card placement so the room card now starts under the heading instead of floating in the middle of the panel. |
 | 2026-05-21 | Remove the remaining left inset from the room card. | Done | Set the room card to full width so it now lines up with the heading edge instead of starting indented. |
@@ -225,6 +227,18 @@ If you want, I can continue by wiring playback for placed audio cards, adding de
 - Updated the admin pre-page with a card-based room layout instead of the plain list.
 - Added masked invite-code reveal behavior so the code stays hidden until clicked.
 - Tightened the spacing and width of the room card to better match the requested 80% sizing and reduce the cramped feel.
+
+## Recent Updates (2026-05-22)
+
+- Reworked the Assets `Ruimte` action into a dedicated room-theme picker for walls and floor.
+- Added room theme persistence so the selected look survives reloads with the room metadata.
+- Confirmed `SceneCanvas.vue` and `AssetPanel.vue` are error-free after the theme wiring change.
+
+## Recent Updates (2026-05-23)
+
+- Reworked the room panel into a compact 3x3 theme grid.
+- Added a per-theme submenu with five wall shades and five floor shades.
+- Confirmed `SceneCanvas.vue` and `AssetPanel.vue` still validate cleanly after the room-theme state upgrade.
 
 ## Session Snapshot (2026-05-12)
 
@@ -572,4 +586,6 @@ Update (2026-05-23, topnav spacing): Increased the top bar's vertical margin so 
 Update (2026-05-23, topnav shell removed): Made the top navigation container transparent and removed its border/shadow/radius so the header no longer appears as a separate bar.
 
 Update (2026-05-23, topnav restored): Brought the top navigation bar shell back, but kept it slimmer so it stays visible without crowding the editor options underneath.
+
+Update (2026-05-23, asset panel switching): Changed the left-toolbar panel switching so opening a different asset category closes the current panel first and then reopens the new one, avoiding the old panel lingering behind the new content.
 
