@@ -4,6 +4,7 @@ const emit = defineEmits(['logout', 'update-user', 'room-deleted'])
 import * as THREE from 'three'
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js'
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js'
+import noekLogoTextUrl from '../assets/Noek_LogoText.svg'
 import AssetPanel from './AssetPanel.vue'
 import { logEvent } from '../lib/analytics'
 import { getSupabase } from '../lib/supabase'
@@ -114,6 +115,7 @@ const rotateStep = Math.PI / 12
 const scaleStep = 0.1
 const assetModels = ref([])
 const hideDeleteHint = ref(false)
+const canEditSceneObjects = computed(() => effectiveRole.value === 'admin' || effectiveRole.value === 'editor')
 // Initialize from localStorage if available
 try {
   const _saved = localStorage.getItem('memorial_hideDeleteHint')
@@ -134,6 +136,8 @@ let floorMaterial = null
 let wallMaterial = null
 let trimMaterial = null
 let roomShadow = null
+let roomDeskChair = null
+let roomDeskChairBaseRotationY = Math.PI
 const profileMenuElement = ref(null)
 let selectionHelper = null
 let sceneObjectIdCounter = 1
@@ -494,6 +498,12 @@ const colorableAssetIds = new Set([
   'guitar_01',
   'bike_01',
   'car_01',
+  'bookshelf_01',
+  'desk_01',
+  'desk_chair_01',
+  'office_chair_01',
+  'carpet_01',
+  'side_chair_01',
 ])
 
 const canEditSelectedObjectColor = computed(() => colorableAssetIds.has(selectedSceneObjectType.value))
@@ -569,6 +579,12 @@ const availableAssets = [
   { id: 'flower', name: 'Bloem', icon: '🌹', file: '/models/flower.glb' },
   { id: 'chair_01', name: 'Stoel', icon: '💺', file: '/models/chair_01.glb' },
   { id: 'table_01', name: 'Bijzettafel', icon: '🛋️', file: '/models/table_01.glb' },
+  { id: 'bookshelf_01', name: 'Boekenkast', icon: '📚', file: '/models/bookshelf_01.glb' },
+  { id: 'desk_01', name: 'Bureau', icon: '🧑‍💻', file: '/models/desk_01.glb' },
+  { id: 'desk_chair_01', name: 'Bureaustoel', icon: '💺', file: '/models/desk_chair_01.glb' },
+  { id: 'sofa_01', name: 'Bank', icon: '🛋️', file: '/models/sofa_01.glb' },
+  { id: 'carpet_01', name: 'Tapijt', icon: '🟪', file: '/models/carpet_01.glb' },
+  { id: 'side_chair_01', name: 'Bijzetstoel', icon: '🪑', file: '/models/side_chair_01.glb' },
 ]
 
 // Serialize scene state to JSON for localStorage
@@ -920,7 +936,7 @@ const deserializeSceneState = async (jsonString) => {
       } else if (objData.assetId && colorableAssetIds.has(objData.assetId)) {
         let model = null
 
-        if (['candle', 'photo-frame', 'flower', 'lamp_floor_01', 'lamp_table_01', 'lamp_hanging_01', 'tv_01', 'laptop_01', 'easel_01', 'ball_01'].includes(objData.assetId)) {
+        if (['candle', 'photo-frame', 'flower', 'lamp_floor_01', 'lamp_table_01', 'lamp_hanging_01', 'tv_01', 'laptop_01', 'easel_01', 'ball_01', 'bookshelf_01', 'desk_01', 'desk_chair_01', 'office_chair_01', 'sofa_01', 'carpet_01', 'side_chair_01'].includes(objData.assetId)) {
           model = createPlaceholderModel(objData.assetId)
         } else {
           const asset = availableAssets.find(a => a.id === objData.assetId)
@@ -1060,7 +1076,7 @@ const handlePlaceVideo = (videoData) => {
   placeVideoInRoom(videoData)
 }
 
-const createSceneObjectRecord = (object, assetId, payload = {}) => {
+const createSceneObjectRecord = (object, assetId, payload = {}, options = {}) => {
   const id = sceneObjectIdCounter++
   object.userData.sceneObjectId = id
 
@@ -1076,7 +1092,10 @@ const createSceneObjectRecord = (object, assetId, payload = {}) => {
   }
 
   sceneObjects.value.push(record)
-  selectSceneObject(record)
+
+  if (options.select !== false) {
+    selectSceneObject(record)
+  }
 
   return id
 }
@@ -1316,6 +1335,10 @@ const handleWindowKeydown = (event) => {
   }
 
   const key = (event.key || '').toLowerCase()
+  if (!canEditSceneObjects.value) {
+    return
+  }
+
   if (key === 'delete' || key === 'del' || key === 'backspace') {
     // Prevent accidental browser navigation when Backspace/Delete is used
     try { event.preventDefault() } catch (e) {}
@@ -1412,11 +1435,34 @@ const selectSceneObject = (record) => {
 const removeSelectedSceneObject = () => {
   const record = selectedSceneObject.value
 
-  if (!record || !room) {
+  if (!canEditSceneObjects.value || !record || !room) {
     return
   }
 
-  room.remove(record.object)
+  if (record.object === roomDeskChair) {
+    roomDeskChair = null
+  }
+
+  if (record.object.removeFromParent) {
+    record.object.removeFromParent()
+  } else if (record.object.parent) {
+    record.object.parent.remove(record.object)
+  } else {
+    room.remove(record.object)
+  }
+
+  record.object.traverse((child) => {
+    if (child.geometry) {
+      child.geometry.dispose()
+    }
+
+    const { material } = child
+    if (Array.isArray(material)) {
+      material.forEach(entry => entry?.dispose?.())
+    } else if (material?.dispose) {
+      material.dispose()
+    }
+  })
   sceneObjects.value = sceneObjects.value.filter(entry => entry.id !== record.id)
   clearHoveredPhoto()
   clearSceneSelection()
@@ -1425,14 +1471,20 @@ const removeSelectedSceneObject = () => {
 const applyTransformToSelectedObject = ({ moveX = 0, moveY = 0, moveZ = 0, rotateY = 0, scaleAdjust = 0 }) => {
   const record = selectedSceneObject.value
 
-  if (!record?.object) {
+  if (!canEditSceneObjects.value || !record?.object) {
     return
   }
 
   record.object.position.x += moveX
   record.object.position.y += moveY
   record.object.position.z += moveZ
-  record.object.rotation.y += rotateY
+
+  if (record.object === roomDeskChair) {
+    roomDeskChairBaseRotationY += rotateY
+    record.object.rotation.y = roomDeskChairBaseRotationY
+  } else {
+    record.object.rotation.y += rotateY
+  }
 
   if (scaleAdjust !== 0) {
     const newScale = Math.max(0.1, record.object.scale.x + scaleAdjust)
@@ -1471,21 +1523,26 @@ const handleCanvasPointerMove = (event) => {
   raycaster.setFromCamera(pointer, camera)
   const intersections = raycaster.intersectObjects(room.children, true)
   const hoveredIntersection = intersections.find(intersection => getPhotoDataFromObject(intersection.object))
+  const selectableRoots = canEditSceneObjects.value ? getSelectableRootObjects() : []
+  const selectableIntersection = selectableRoots.length
+    ? raycaster.intersectObjects(selectableRoots, true).find(intersection => findSceneObjectRecord(intersection.object))
+    : null
+
+  renderer.domElement.style.cursor = selectableIntersection ? 'pointer' : 'default'
 
   if (!hoveredIntersection) {
     clearHoveredPhoto()
-    return
-  }
-
-  hoveredPhoto.value = getPhotoDataFromObject(hoveredIntersection.object)
-  hoveredPhotoPosition.value = {
-    x: event.clientX - rect.left + 16,
-    y: event.clientY - rect.top + 16,
+  } else {
+    hoveredPhoto.value = getPhotoDataFromObject(hoveredIntersection.object)
+    hoveredPhotoPosition.value = {
+      x: event.clientX - rect.left + 16,
+      y: event.clientY - rect.top + 16,
+    }
   }
 }
 
 const handleCanvasClick = (event) => {
-  if (!renderer || !camera || !room) {
+  if (!renderer || !camera || !room || !canEditSceneObjects.value) {
     return
   }
 
@@ -1514,11 +1571,134 @@ const handleCanvasClick = (event) => {
 
 const handleCanvasPointerLeave = () => {
   clearHoveredPhoto()
+  if (renderer?.domElement) {
+    renderer.domElement.style.cursor = 'default'
+  }
 }
 
 // Helper function to create placeholder models
 const createPlaceholderModel = (assetId) => {
   const group = new THREE.Group()
+
+  const addBox = (geometry, material, position = [0, 0, 0], rotation = [0, 0, 0]) => {
+    const mesh = new THREE.Mesh(geometry, material)
+    mesh.position.set(position[0], position[1], position[2])
+    mesh.rotation.set(rotation[0], rotation[1], rotation[2])
+    mesh.castShadow = true
+    mesh.receiveShadow = true
+    group.add(mesh)
+    return mesh
+  }
+
+  const addCylinder = (geometry, material, position = [0, 0, 0], rotation = [0, 0, 0]) => {
+    const mesh = new THREE.Mesh(geometry, material)
+    mesh.position.set(position[0], position[1], position[2])
+    mesh.rotation.set(rotation[0], rotation[1], rotation[2])
+    mesh.castShadow = true
+    mesh.receiveShadow = true
+    group.add(mesh)
+    return mesh
+  }
+
+  const buildDeskLamp = (height = 0.42, offset = [0, 0, 0]) => {
+    const stemMaterial = new THREE.MeshStandardMaterial({ color: '#7b6f63', roughness: 0.6 })
+    const shadeMaterial = new THREE.MeshStandardMaterial({ color: '#ffd9a8', roughness: 0.85, emissive: '#ffe8c4', emissiveIntensity: 0.1 })
+
+    addCylinder(new THREE.CylinderGeometry(0.015, 0.015, height, 8), stemMaterial, [offset[0], offset[1] + 0.18, offset[2]])
+    addBox(new THREE.BoxGeometry(0.12, 0.02, 0.12), stemMaterial, [offset[0], offset[1] + 0.01, offset[2]])
+    addBox(new THREE.ConeGeometry(0.12, 0.18, 12), shadeMaterial, [offset[0] + 0.03, offset[1] + height + 0.03, offset[2]], [0, 0, -0.18])
+  }
+
+  const buildOfficeChair = (scale = 1) => {
+    const frameMaterial = new THREE.MeshStandardMaterial({ color: '#5d98d6', roughness: 0.72 })
+    const darkMaterial = new THREE.MeshStandardMaterial({ color: '#3b4d62', roughness: 0.78 })
+
+    addBox(new THREE.BoxGeometry(0.42 * scale, 0.1 * scale, 0.42 * scale), frameMaterial, [0, 0.2 * scale, 0])
+    addBox(new THREE.BoxGeometry(0.42 * scale, 0.38 * scale, 0.08 * scale), frameMaterial, [0, 0.48 * scale, -0.16 * scale])
+    addCylinder(new THREE.CylinderGeometry(0.03 * scale, 0.03 * scale, 0.14 * scale, 10), darkMaterial, [0, 0.08 * scale, 0])
+    addBox(new THREE.BoxGeometry(0.12 * scale, 0.08 * scale, 0.12 * scale), darkMaterial, [0, 0.02 * scale, 0])
+    addBox(new THREE.BoxGeometry(0.05 * scale, 0.26 * scale, 0.05 * scale), darkMaterial, [-0.16 * scale, 0.08 * scale, -0.16 * scale])
+    addBox(new THREE.BoxGeometry(0.05 * scale, 0.26 * scale, 0.05 * scale), darkMaterial, [0.16 * scale, 0.08 * scale, -0.16 * scale])
+    addBox(new THREE.BoxGeometry(0.05 * scale, 0.26 * scale, 0.05 * scale), darkMaterial, [-0.16 * scale, 0.08 * scale, 0.16 * scale])
+    addBox(new THREE.BoxGeometry(0.05 * scale, 0.26 * scale, 0.05 * scale), darkMaterial, [0.16 * scale, 0.08 * scale, 0.16 * scale])
+  }
+
+  const buildCarpet = () => {
+    const carpetMaterial = new THREE.MeshStandardMaterial({ color: '#ff54ad', roughness: 0.98, side: THREE.DoubleSide })
+    const carpet = new THREE.Mesh(new THREE.PlaneGeometry(2.1, 1.45), carpetMaterial)
+    carpet.rotation.x = -Math.PI / 2
+    carpet.position.y = 0.012
+    carpet.receiveShadow = true
+    group.add(carpet)
+  }
+
+  const buildSofa = () => {
+    const frameMaterial = new THREE.MeshStandardMaterial({ color: '#66d2dc', roughness: 0.92, metalness: 0 })
+    const backMaterial = new THREE.MeshStandardMaterial({ color: '#5dc6d1', roughness: 0.95, metalness: 0 })
+    const legMaterial = new THREE.MeshStandardMaterial({ color: '#ccbcae', roughness: 0.96, metalness: 0 })
+
+    addBox(new THREE.BoxGeometry(1.72, 0.32, 0.9), frameMaterial, [0, 0.18, 0])
+    addBox(new THREE.BoxGeometry(1.68, 0.98, 0.24), backMaterial, [0, 0.82, -0.3])
+    addBox(new THREE.BoxGeometry(0.22, 0.8, 0.82), frameMaterial, [-0.8, 0.44, 0])
+    addBox(new THREE.BoxGeometry(0.22, 0.8, 0.82), frameMaterial, [0.8, 0.44, 0])
+    addBox(new THREE.BoxGeometry(1.6, 0.08, 0.82), backMaterial, [0, 0.04, 0.01])
+
+    addBox(new THREE.BoxGeometry(0.1, 0.12, 0.1), legMaterial, [-0.72, 0.02, -0.32])
+    addBox(new THREE.BoxGeometry(0.1, 0.12, 0.1), legMaterial, [0.72, 0.02, -0.32])
+    addBox(new THREE.BoxGeometry(0.1, 0.12, 0.1), legMaterial, [-0.72, 0.02, 0.32])
+    addBox(new THREE.BoxGeometry(0.1, 0.12, 0.1), legMaterial, [0.72, 0.02, 0.32])
+
+  }
+
+  const buildBookshelf = () => {
+    const frameMaterial = new THREE.MeshStandardMaterial({ color: '#f6ebdf', roughness: 0.82 })
+    const shelfMaterial = new THREE.MeshStandardMaterial({ color: '#eadac9', roughness: 0.86 })
+    const bookColors = ['#7fd6df', '#ff8ab8', '#ffd56b', '#9ac7ff', '#8fd48b', '#f4a3d1']
+
+    addBox(new THREE.BoxGeometry(0.95, 1.72, 0.38), frameMaterial, [0, 0.86, 0])
+    addBox(new THREE.BoxGeometry(0.86, 0.05, 0.3), shelfMaterial, [0, 1.6, 0])
+    addBox(new THREE.BoxGeometry(0.86, 0.05, 0.3), shelfMaterial, [0, 1.15, 0])
+    addBox(new THREE.BoxGeometry(0.86, 0.05, 0.3), shelfMaterial, [0, 0.7, 0])
+    addBox(new THREE.BoxGeometry(0.86, 0.05, 0.3), shelfMaterial, [0, 0.25, 0])
+
+    ;[-0.28, -0.04, 0.2].forEach((x, index) => {
+      const color = bookColors[index % bookColors.length]
+      addBox(new THREE.BoxGeometry(0.08 + index * 0.01, 0.32 + index * 0.05, 0.12), new THREE.MeshStandardMaterial({ color, roughness: 0.7 }), [x, 1.42, 0.02])
+    })
+    addBox(new THREE.BoxGeometry(0.12, 0.42, 0.12), new THREE.MeshStandardMaterial({ color: '#f29bcc', roughness: 0.72 }), [0.22, 1.35, 0.02])
+    addBox(new THREE.BoxGeometry(0.1, 0.28, 0.12), new THREE.MeshStandardMaterial({ color: '#5ed4db', roughness: 0.72 }), [0.34, 1.42, 0.02])
+  }
+
+  const buildDeskSet = () => {
+    const topMaterial = new THREE.MeshStandardMaterial({ color: '#f6e1c9', roughness: 0.82 })
+    const legMaterial = new THREE.MeshStandardMaterial({ color: '#e4c8a7', roughness: 0.84 })
+    const monitorMaterial = new THREE.MeshStandardMaterial({ color: '#48c5d5', roughness: 0.76 })
+    const frameMaterial = new THREE.MeshStandardMaterial({ color: '#3f4450', roughness: 0.82 })
+
+    addBox(new THREE.BoxGeometry(1.65, 0.1, 0.6), topMaterial, [0, 0.82, 0])
+    addBox(new THREE.BoxGeometry(0.08, 0.82, 0.08), legMaterial, [-0.72, 0.41, -0.22])
+    addBox(new THREE.BoxGeometry(0.08, 0.82, 0.08), legMaterial, [0.72, 0.41, -0.22])
+    addBox(new THREE.BoxGeometry(0.08, 0.82, 0.08), legMaterial, [-0.72, 0.41, 0.22])
+    addBox(new THREE.BoxGeometry(0.08, 0.82, 0.08), legMaterial, [0.72, 0.41, 0.22])
+
+    addBox(new THREE.BoxGeometry(0.72, 0.42, 0.06), frameMaterial, [0.22, 1.15, -0.15])
+    addBox(new THREE.BoxGeometry(0.64, 0.34, 0.02), monitorMaterial, [0.22, 1.15, -0.12])
+    addBox(new THREE.BoxGeometry(0.16, 0.1, 0.12), frameMaterial, [0.22, 0.89, -0.12])
+    buildDeskLamp(0.5, [-0.42, 0.86, 0.2])
+    addBox(new THREE.BoxGeometry(0.55, 0.04, 0.02), frameMaterial, [0.05, 0.97, 0.03])
+  }
+
+  const buildSideChair = () => {
+    const seatMaterial = new THREE.MeshStandardMaterial({ color: '#5fd1df', roughness: 0.72 })
+    const frameMaterial = new THREE.MeshStandardMaterial({ color: '#4f9fb1', roughness: 0.78 })
+
+    addBox(new THREE.BoxGeometry(0.52, 0.12, 0.52), seatMaterial, [0, 0.18, 0])
+    addBox(new THREE.BoxGeometry(0.52, 0.36, 0.08), seatMaterial, [0, 0.42, -0.22])
+    addBox(new THREE.BoxGeometry(0.06, 0.32, 0.06), frameMaterial, [-0.2, 0.08, -0.18])
+    addBox(new THREE.BoxGeometry(0.06, 0.32, 0.06), frameMaterial, [0.2, 0.08, -0.18])
+    addBox(new THREE.BoxGeometry(0.06, 0.32, 0.06), frameMaterial, [-0.2, 0.08, 0.18])
+    addBox(new THREE.BoxGeometry(0.06, 0.32, 0.06), frameMaterial, [0.2, 0.08, 0.18])
+  }
   
   if (assetId === 'candle') {
     // Candle: cylinder with flame
@@ -1680,6 +1860,19 @@ const createPlaceholderModel = (assetId) => {
     petal.position.y = 0.3
     petal.castShadow = true
     group.add(petal)
+  }
+  else if (['bookshelf_01', 'book_closet_01', 'closet_01'].includes(assetId)) {
+    buildBookshelf()
+  } else if (['desk_01', 'workdesk_01', 'computer_desk_01'].includes(assetId)) {
+    buildDeskSet()
+  } else if (['desk_chair_01', 'office_chair_01'].includes(assetId)) {
+    buildOfficeChair(1.08)
+  } else if (['sofa_01', 'blue_sofa_01'].includes(assetId)) {
+    buildSofa()
+  } else if (['carpet_01', 'rug_01'].includes(assetId)) {
+    buildCarpet()
+  } else if (['side_chair_01', 'chair_small_01', 'chair_02'].includes(assetId)) {
+    buildSideChair()
   }
   else if (assetId === 'chair_01') {
     // Simple chair placeholder: seat, back, and legs
@@ -2003,82 +2196,320 @@ onMounted(() => {
   rug.position.set(0.2, 0.03, 0.9)
   room.add(rug)
 
-  const sofaMaterial = new THREE.MeshStandardMaterial({
-    color: '#63ced0',
-    roughness: 0.75,
-  })
+  const createSofaGroup = (width, depth, accentColor) => {
+    const sofaGroup = new THREE.Group()
+    const frameMaterial = new THREE.MeshStandardMaterial({ color: '#69d3d4', roughness: 0.92, metalness: 0 })
+    const accentMaterial = new THREE.MeshStandardMaterial({ color: accentColor, roughness: 0.97, metalness: 0 })
+    const legMaterial = new THREE.MeshStandardMaterial({ color: '#ddd3ca', roughness: 0.96, metalness: 0 })
 
-  const leftSofa = new THREE.Mesh(new THREE.BoxGeometry(2.5, 1, 1.1), sofaMaterial)
-  leftSofa.position.set(-2.75, 0.5, 0.6)
-  leftSofa.castShadow = true
-  leftSofa.receiveShadow = true
+    const seat = new THREE.Mesh(new THREE.BoxGeometry(width, 0.28, depth * 0.92), frameMaterial)
+    seat.position.y = 0.18
+    seat.castShadow = true
+    seat.receiveShadow = true
+    sofaGroup.add(seat)
+
+    const back = new THREE.Mesh(new THREE.BoxGeometry(width * 0.95, 0.8, 0.2), accentMaterial)
+    back.position.set(0, 0.69, -depth * 0.27)
+    back.castShadow = true
+    back.receiveShadow = true
+    sofaGroup.add(back)
+
+    const leftArm = new THREE.Mesh(new THREE.BoxGeometry(width * 0.12, 0.56, depth * 0.88), frameMaterial)
+    leftArm.position.set(-width * 0.44, 0.36, 0)
+    leftArm.castShadow = true
+    leftArm.receiveShadow = true
+    sofaGroup.add(leftArm)
+
+    const rightArm = new THREE.Mesh(new THREE.BoxGeometry(width * 0.12, 0.56, depth * 0.88), frameMaterial)
+    rightArm.position.set(width * 0.44, 0.36, 0)
+    rightArm.castShadow = true
+    rightArm.receiveShadow = true
+    sofaGroup.add(rightArm)
+
+    const lowerFront = new THREE.Mesh(new THREE.BoxGeometry(width * 0.92, 0.08, depth * 0.82), frameMaterial)
+    lowerFront.position.set(0, 0.06, 0)
+    lowerFront.castShadow = true
+    lowerFront.receiveShadow = true
+    sofaGroup.add(lowerFront)
+
+    const legGeo = new THREE.BoxGeometry(0.08, 0.16, 0.08)
+    const legPositions = [
+      [-width * 0.4, 0.02, -depth * 0.34],
+      [width * 0.4, 0.02, -depth * 0.34],
+      [-width * 0.4, 0.02, depth * 0.34],
+      [width * 0.4, 0.02, depth * 0.34],
+    ]
+
+    legPositions.forEach(([x, y, z]) => {
+      const leg = new THREE.Mesh(legGeo, legMaterial)
+      leg.position.set(x, y, z)
+      leg.castShadow = true
+      leg.receiveShadow = true
+      sofaGroup.add(leg)
+    })
+
+    return sofaGroup
+  }
+
+  const createBookshelfGroup = () => {
+    const shelfGroup = new THREE.Group()
+    const frameMaterial = new THREE.MeshStandardMaterial({ color: '#f7eadd', roughness: 0.9 })
+    const shelfMaterial = new THREE.MeshStandardMaterial({ color: '#eddcc8', roughness: 0.92 })
+    const bookMaterials = [
+      '#8fd6d7', '#4cc7d9', '#f79fca', '#ffd36f', '#a8d7ff', '#9fe39b', '#f4b7df',
+    ].map(color => new THREE.MeshStandardMaterial({ color, roughness: 0.7 }))
+
+    const back = new THREE.Mesh(new THREE.BoxGeometry(0.7, 2.9, 0.14), frameMaterial)
+    back.position.y = 1.45
+    back.castShadow = true
+    back.receiveShadow = true
+    shelfGroup.add(back)
+
+    const leftSide = new THREE.Mesh(new THREE.BoxGeometry(0.08, 2.95, 0.36), frameMaterial)
+    leftSide.position.set(-0.34, 1.48, 0)
+    leftSide.castShadow = true
+    leftSide.receiveShadow = true
+    shelfGroup.add(leftSide)
+
+    const rightSide = new THREE.Mesh(new THREE.BoxGeometry(0.08, 2.95, 0.36), frameMaterial)
+    rightSide.position.set(0.34, 1.48, 0)
+    rightSide.castShadow = true
+    rightSide.receiveShadow = true
+    shelfGroup.add(rightSide)
+
+    const shelfLevels = [0.42, 1.0, 1.58, 2.16]
+    shelfLevels.forEach((height) => {
+      const board = new THREE.Mesh(new THREE.BoxGeometry(0.72, 0.05, 0.3), shelfMaterial)
+      board.position.y = height
+      board.castShadow = true
+      board.receiveShadow = true
+      shelfGroup.add(board)
+    })
+
+    const bookStacks = [
+      { x: -0.22, y: 2.36, heights: [0.34, 0.46, 0.28] },
+      { x: 0.0, y: 1.78, heights: [0.26, 0.34, 0.22] },
+      { x: 0.16, y: 1.18, heights: [0.36, 0.3, 0.28] },
+      { x: -0.1, y: 0.6, heights: [0.3, 0.24, 0.34] },
+    ]
+
+    bookStacks.forEach((stack, stackIndex) => {
+      stack.heights.forEach((bookHeight, bookIndex) => {
+        const book = new THREE.Mesh(
+          new THREE.BoxGeometry(0.08 + bookIndex * 0.02, bookHeight, 0.12),
+          bookMaterials[(stackIndex + bookIndex) % bookMaterials.length],
+        )
+        book.position.set(stack.x + bookIndex * 0.09, stack.y + bookHeight / 2, 0.03)
+        book.castShadow = true
+        book.receiveShadow = true
+        shelfGroup.add(book)
+      })
+    })
+
+    return shelfGroup
+  }
+
+  const createDeskGroup = () => {
+    const deskGroup = new THREE.Group()
+    const topMaterial = new THREE.MeshStandardMaterial({ color: '#f7d4b9', roughness: 0.82 })
+    const legMaterial = new THREE.MeshStandardMaterial({ color: '#e8c8a9', roughness: 0.86 })
+    const screenMaterial = new THREE.MeshStandardMaterial({ color: '#39c5d7', emissive: '#1e4b5c', emissiveIntensity: 0.18, roughness: 0.55 })
+    const darkMaterial = new THREE.MeshStandardMaterial({ color: '#5e6776', roughness: 0.78 })
+
+    const top = new THREE.Mesh(new THREE.BoxGeometry(2.3, 0.12, 0.88), topMaterial)
+    top.position.y = 0.84
+    top.castShadow = true
+    top.receiveShadow = true
+    deskGroup.add(top)
+
+    const legGeo = new THREE.BoxGeometry(0.08, 0.9, 0.08)
+    const legPositions = [
+      [-1.02, 0.42, -0.34],
+      [1.02, 0.42, -0.34],
+      [-1.02, 0.42, 0.34],
+      [1.02, 0.42, 0.34],
+    ]
+
+    legPositions.forEach(([x, y, z]) => {
+      const leg = new THREE.Mesh(legGeo, legMaterial)
+      leg.position.set(x, y, z)
+      leg.castShadow = true
+      leg.receiveShadow = true
+      deskGroup.add(leg)
+    })
+
+    const shelf = new THREE.Mesh(new THREE.BoxGeometry(0.72, 0.08, 0.18), topMaterial)
+    shelf.position.set(0.32, 1.1, -0.2)
+    shelf.castShadow = true
+    shelf.receiveShadow = true
+    deskGroup.add(shelf)
+
+    const monitor = new THREE.Mesh(new THREE.BoxGeometry(0.7, 0.46, 0.06), screenMaterial)
+    monitor.position.set(0.42, 1.28, -0.18)
+    monitor.castShadow = true
+    monitor.receiveShadow = true
+    deskGroup.add(monitor)
+
+    const monitorStand = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.16, 0.1), darkMaterial)
+    monitorStand.position.set(0.42, 1.0, -0.18)
+    monitorStand.castShadow = true
+    monitorStand.receiveShadow = true
+    deskGroup.add(monitorStand)
+
+    const lampBase = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.06, 0.05, 14), darkMaterial)
+    lampBase.position.set(-0.52, 0.9, 0.2)
+    lampBase.castShadow = true
+    lampBase.receiveShadow = true
+    deskGroup.add(lampBase)
+
+    const lampStem = new THREE.Mesh(new THREE.CylinderGeometry(0.016, 0.016, 0.42, 8), darkMaterial)
+    lampStem.position.set(-0.52, 1.12, 0.2)
+    lampStem.castShadow = true
+    deskGroup.add(lampStem)
+
+    const lampShade = new THREE.Mesh(new THREE.ConeGeometry(0.14, 0.2, 12), new THREE.MeshStandardMaterial({ color: '#ffe0bd', roughness: 0.88, emissive: '#ffdfa8', emissiveIntensity: 0.12 }))
+    lampShade.position.set(-0.5, 1.37, 0.2)
+    lampShade.castShadow = true
+    lampShade.receiveShadow = true
+    deskGroup.add(lampShade)
+
+    const keyboard = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.03, 0.18), darkMaterial)
+    keyboard.position.set(0.1, 0.9, 0.08)
+    keyboard.castShadow = true
+    keyboard.receiveShadow = true
+    deskGroup.add(keyboard)
+
+    return deskGroup
+  }
+
+  const createTrashCan = () => {
+    const trashGroup = new THREE.Group()
+    const bodyMaterial = new THREE.MeshStandardMaterial({ color: '#d9dde2', roughness: 0.86 })
+    const rimMaterial = new THREE.MeshStandardMaterial({ color: '#f3f6fa', roughness: 0.8 })
+    const linerMaterial = new THREE.MeshStandardMaterial({ color: '#b8bec8', roughness: 0.92 })
+
+    const body = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.16, 0.28, 16), bodyMaterial)
+    body.position.y = 0.14
+    body.castShadow = true
+    body.receiveShadow = true
+    trashGroup.add(body)
+
+    const rim = new THREE.Mesh(new THREE.CylinderGeometry(0.15, 0.15, 0.04, 16), rimMaterial)
+    rim.position.y = 0.29
+    rim.castShadow = true
+    rim.receiveShadow = true
+    trashGroup.add(rim)
+
+    const liner = new THREE.Mesh(new THREE.CylinderGeometry(0.095, 0.11, 0.22, 16), linerMaterial)
+    liner.position.y = 0.13
+    liner.castShadow = true
+    liner.receiveShadow = true
+    trashGroup.add(liner)
+
+    return trashGroup
+  }
+
+  const createDeskChair = () => {
+    const chairGroup = new THREE.Group()
+    const seatMaterial = new THREE.MeshStandardMaterial({ color: '#ec79ae', roughness: 0.78 })
+    const backMaterial = new THREE.MeshStandardMaterial({ color: '#f4a3c8', roughness: 0.8 })
+    const frameMaterial = new THREE.MeshStandardMaterial({ color: '#4a5568', roughness: 0.76 })
+
+    const seat = new THREE.Mesh(new THREE.BoxGeometry(0.52, 0.1, 0.5), seatMaterial)
+    seat.position.y = 0.42
+    seat.castShadow = true
+    seat.receiveShadow = true
+    chairGroup.add(seat)
+
+    const back = new THREE.Mesh(new THREE.BoxGeometry(0.48, 0.56, 0.08), backMaterial)
+    back.position.set(0, 0.76, -0.2)
+    back.castShadow = true
+    back.receiveShadow = true
+    chairGroup.add(back)
+
+    const armGeo = new THREE.BoxGeometry(0.06, 0.22, 0.38)
+    const leftArm = new THREE.Mesh(armGeo, frameMaterial)
+    leftArm.position.set(-0.26, 0.5, 0)
+    leftArm.castShadow = true
+    leftArm.receiveShadow = true
+    chairGroup.add(leftArm)
+
+    const rightArm = new THREE.Mesh(armGeo, frameMaterial)
+    rightArm.position.set(0.26, 0.5, 0)
+    rightArm.castShadow = true
+    rightArm.receiveShadow = true
+    chairGroup.add(rightArm)
+
+    const hub = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.07, 0.12, 12), frameMaterial)
+    hub.position.y = 0.08
+    hub.castShadow = true
+    hub.receiveShadow = true
+    chairGroup.add(hub)
+
+    const wheelBase = new THREE.Mesh(new THREE.CylinderGeometry(0.15, 0.15, 0.04, 18), frameMaterial)
+    wheelBase.position.y = 0.03
+    wheelBase.castShadow = true
+    wheelBase.receiveShadow = true
+    chairGroup.add(wheelBase)
+
+    const legGeo = new THREE.CylinderGeometry(0.022, 0.03, 0.36, 8)
+    const legPositions = [
+      [-0.16, 0.18, -0.16],
+      [0.16, 0.18, -0.16],
+      [-0.16, 0.18, 0.16],
+      [0.16, 0.18, 0.16],
+    ]
+
+    legPositions.forEach(([x, y, z]) => {
+      const leg = new THREE.Mesh(legGeo, frameMaterial)
+      leg.position.set(x, y, z)
+      leg.castShadow = true
+      leg.receiveShadow = true
+      chairGroup.add(leg)
+    })
+
+    return chairGroup
+  }
+
+  const leftSofa = createSofaGroup(2.45, 1.02, '#4fcfd5')
+  leftSofa.position.set(-2.75, 0.32, 0.55)
+  leftSofa.rotation.y = -0.06
   room.add(leftSofa)
 
-  const rightSofa = new THREE.Mesh(new THREE.BoxGeometry(1.65, 1, 1.1), sofaMaterial)
-  rightSofa.position.set(2.6, 0.5, 0.5)
-  rightSofa.castShadow = true
-  rightSofa.receiveShadow = true
+  const rightSofa = createSofaGroup(1.55, 1.0, '#4fcfd5')
+  rightSofa.position.set(2.58, 0.34, 0.48)
+  rightSofa.rotation.y = 0.16
   room.add(rightSofa)
 
-  const desk = new THREE.Mesh(
-    new THREE.BoxGeometry(2.55, 0.16, 1.15),
-    new THREE.MeshStandardMaterial({
-      color: '#f7d4b9',
-      roughness: 0.8,
-    }),
-  )
-  desk.position.set(1.35, 1.12, -2.85)
-  desk.castShadow = true
-  desk.receiveShadow = true
+  const desk = createDeskGroup()
+  desk.position.set(1.34, 0.62, -2.86)
+  desk.rotation.y = -0.02
   room.add(desk)
 
-  const shelf = new THREE.Mesh(
-    new THREE.BoxGeometry(0.8, 3.2, 1),
-    new THREE.MeshStandardMaterial({
-      color: '#f6e8dc',
-      roughness: 0.92,
-    }),
-  )
-  shelf.position.set(0.15, 1.6, -3.65)
-  shelf.castShadow = true
-  shelf.receiveShadow = true
+  const shelf = createBookshelfGroup()
+  shelf.position.set(0.16, 0.18, -3.7)
+  shelf.rotation.y = -0.03
   room.add(shelf)
 
-  const chair = new THREE.Mesh(
-    new THREE.CylinderGeometry(0.5, 0.64, 0.9, 28),
-    new THREE.MeshStandardMaterial({
-      color: '#ec79ae',
-      roughness: 0.78,
-    }),
-  )
-  chair.position.set(1.78, 0.45, -1.92)
-  chair.castShadow = true
-  chair.receiveShadow = true
+  const chair = createDeskChair()
+  chair.position.set(1.54, 0.04, -2.12)
+  roomDeskChair = chair
+  roomDeskChairBaseRotationY = Math.PI
+  chair.rotation.y = roomDeskChairBaseRotationY
+  chair.scale.set(1.3, 1.3, 1.3)
   room.add(chair)
 
-  const monitor = new THREE.Mesh(
-    new THREE.BoxGeometry(0.9, 0.58, 0.07),
-    new THREE.MeshStandardMaterial({
-      color: '#2ec0c5',
-      emissive: '#15485f',
-      emissiveIntensity: 0.23,
-      roughness: 0.45,
-    }),
-  )
-  monitor.position.set(1.55, 1.55, -2.85)
-  monitor.castShadow = true
-  room.add(monitor)
-
-  const plant = new THREE.Mesh(
-    new THREE.ConeGeometry(0.36, 0.88, 10),
-    new THREE.MeshStandardMaterial({
-      color: '#31bc77',
-      roughness: 0.8,
-    }),
-  )
-  plant.position.set(0.62, 1.64, -2.45)
-  plant.castShadow = true
+  const plant = createTrashCan()
+  plant.position.set(0.58, 0.2, -2.34)
+  plant.scale.set(1.45, 1.45, 1.45)
   room.add(plant)
+
+  createSceneObjectRecord(leftSofa, 'sofa_01', {}, { select: false })
+  createSceneObjectRecord(rightSofa, 'sofa_01', {}, { select: false })
+  createSceneObjectRecord(desk, 'desk_01', {}, { select: false })
+  createSceneObjectRecord(shelf, 'bookshelf_01', {}, { select: false })
+  createSceneObjectRecord(chair, 'desk_chair_01', {}, { select: false })
+  createSceneObjectRecord(plant, 'trash_can_01', {}, { select: false })
 
   roomShadow = new THREE.Mesh(
     new THREE.PlaneGeometry(9.4, 9.4),
@@ -2122,7 +2553,9 @@ onMounted(() => {
   const lightPulse = () => {
     const time = performance.now() * 0.001
     fillLight.intensity = 0.82 + Math.sin(time * 0.9) * 0.08
-    chair.rotation.y = Math.sin(time * 0.42) * 0.06
+    if (roomDeskChair) {
+      roomDeskChair.rotation.y = roomDeskChairBaseRotationY + Math.sin(time * 0.42) * 0.06
+    }
   }
 
   const resize = () => {
@@ -2203,8 +2636,7 @@ onBeforeUnmount(() => {
   <main class="editor-shell">
     <header class="top-bar">
       <div class="brand-lockup">
-        <div class="brand-mark" aria-hidden="true"></div>
-        <span>BRAND</span>
+        <img class="brand-mark-image" :src="noekLogoTextUrl" alt="Noek" />
       </div>
 
       <div class="top-bar-controls">
@@ -2406,7 +2838,7 @@ onBeforeUnmount(() => {
         <p>{{ hoveredPhoto.text || 'Geen extra tekst toegevoegd.' }}</p>
       </div>
 
-      <aside v-if="selectedSceneObject" class="selection-panel">
+      <aside v-if="selectedSceneObject && canEditSceneObjects" class="selection-panel">
         <div class="selection-panel-header">
           <h3>Geselecteerd object</h3>
           <button type="button" class="selection-close-button" @click="clearSceneSelection">×</button>
@@ -2593,19 +3025,12 @@ onBeforeUnmount(() => {
 .brand-lockup {
   display: flex;
   align-items: center;
-  gap: 12px;
-  font-family: 'Trebuchet MS', 'Segoe UI', sans-serif;
-  font-size: 32px;
-  font-weight: 700;
-  letter-spacing: 0.06em;
 }
 
-.brand-mark {
-  width: 40px;
-  height: 40px;
-  border: 5px solid #080808;
-  transform: rotate(45deg);
-  position: relative;
+.brand-mark-image {
+  height: 38px;
+  width: auto;
+  display: block;
 }
 
 .brand-mark::before,
