@@ -302,6 +302,11 @@ const modelBank = {
     { id: 'chair_01', name: 'Stoel', detail: 'Lichte houten stoel voor in een kamerhoek.', icon: '💺' },
     { id: 'table_01', name: 'Bijzettafel', detail: 'Klein tafeltje voor een plant of kaars.', icon: '🪑' },
     { id: 'sofa_01', name: 'Bank', detail: 'Compacte bank als extra meubelstuk.', icon: '🛋️' },
+    { id: 'bookshelf_01', name: 'Boekenkast', detail: 'Hoge kast voor boeken en rustige decoratie.', icon: '📚' },
+    { id: 'desk_01', name: 'Bureau', detail: 'Werkplek met ruimte voor een scherm en lamp.', icon: '🧑‍💻' },
+    { id: 'desk_chair_01', name: 'Bureaustoel', detail: 'Comfortabele stoel voor achter het bureau.', icon: '💺' },
+    { id: 'carpet_01', name: 'Tapijt', detail: 'Zacht vloerkleed dat de zithoek afbakent.', icon: '🟪' },
+    { id: 'side_chair_01', name: 'Bijzetstoel', detail: 'Kleine stoel voor naast de bank of tafel.', icon: '🪑' },
   ],
   planten: [
     { id: 'plant_01', name: 'Monstera', detail: 'Grote bladplant met rustige uitstraling.', icon: '🪴' },
