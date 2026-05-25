@@ -1,3 +1,64 @@
+## Session Snapshot (2026-05-25)
+### Summary — Current work
+- Extended the scene placeholder generator so room furniture can render as a bookshelf, desk with lamp and computer, office chair, sofa, carpet, and a small side chair.
+- Aligned the asset registry and model panel with the new ids so the room pieces can be placed from the UI even without external GLB files.
+- Validated `SceneCanvas.vue` and `AssetPanel.vue` after the edits; both files are clean.
+- Fixed a Vue SFC parser error caused by a bare array literal in the sofa leg setup and revalidated `SceneCanvas.vue` cleanly.
+- Fixed the second Vue SFC parser error in the desk leg setup and revalidated `SceneCanvas.vue` cleanly again.
+- Replaced the green room prop with a small trash can and the pink prop with a proper desk chair.
+- Turned the desk chair to face the desk and scaled it up so it reads better in the scene.
+- Nudged the desk chair closer to the desk, rotated it more precisely toward the desk, and made it larger again.
+- Angled the desk chair a bit more away from a straight-on pose and enlarged the trash can.
+- Flipped the desk chair rotation so the chair orientation is now reversed.
+- Rotated the desk chair another 90 degrees from that orientation.
+- Gave the chair a fixed base rotation so the wobble animation no longer overrides its facing direction.
+- Rotated the chair another 90 degrees to the right by advancing its base heading to pi.
+- Registered the built-in room furniture as selectable scene objects so admins can click, move, rotate, and resize them.
+- Refined the sofa placeholders with fuller cushions, armrests, and lower feet so they read more like actual couches.
+- Softened the sofa colors and raised roughness so the couches read more like upholstered fabric.
+- Deepened the sofa seat and back cushions for a fuller, comfier couch silhouette.
+- Puffier cushions: increased cushion thickness and backrest volume on both sofa builders.
+- Reworked the cushions into rounded cushion groups so they read more puffy in the scene.
+- Removed the circular dome from the cushions and applied the same layered volume to the back pillows.
+- Made the seat cushions and back pillows fuller with taller layered profiles.
+- Removed the sofa pillows entirely, leaving the couch body and back shell.
+- Added recursive cleanup to deleted scene objects so geometry and materials are disposed too.
+- Fixed object deletion to detach from the real parent node before disposal.
+- Replaced the placeholder BRAND logo with the Noek wordmark SVG in the editor and top navigation.
+- Restored the text branding and added the Noek favicon PNG to the document head.
+- Reverted the favicon back to the original SVG link after the PNG version felt too small.
+- Reintroduced the Noek wordmark SVG in the editor and top navigation again, and logged the favicon follow-up on the todo list.
+- User clarified the logo should stay on `Noek_LogoText.svg`, so no PNG swap is needed.
+| 2026-05-26 | Bring back the Noek logo text and note the favicon follow-up. | Done | Swapped the editor and site navigation branding back to `Noek_LogoText.svg` and added the favicon task to the tracker. |
+| 2026-05-26 | Clarify the wordmark asset choice. | Done | Confirmed the brand should remain on `Noek_LogoText.svg` rather than `Noek_LogoText.png`. |
+
+### Tracker Update
+- 2026-05-25: Added the room-furniture placeholder models and synced the asset list with the new ids. Confirming `Audrey_AI_Agent.md` updated.
+- 2026-05-25: Fixed the parser error in the default room furniture block and confirmed `SceneCanvas.vue` passes validation again.
+- 2026-05-25: Fixed the matching parser error in the desk furniture block and confirmed `SceneCanvas.vue` passes validation again.
+- 2026-05-25: Replaced the green triangle with a trash can and the pink stool with a desk chair in the room scene.
+- 2026-05-25: Rotated the desk chair to face the desk and increased its scale for better visual balance.
+- 2026-05-25: Moved the desk chair closer under the desk and adjusted the yaw so it points more directly at the work surface.
+- 2026-05-26: Tilted the desk chair slightly off-axis and scaled the trash can up for better proportion.
+- 2026-05-26: Flipped the desk chair rotation by 180 degrees from the previous angle.
+- 2026-05-26: Turned the desk chair 90 degrees further around its vertical axis.
+- 2026-05-26: Replaced the direct chair rotation with a fixed base rotation plus a tiny wobble.
+- 2026-05-26: Advanced the chair base rotation to pi for one more 90-degree right turn.
+- 2026-05-26: Made the default furniture clickable and editable from the scene panel.
+- 2026-05-26: Reworked the sofa geometry to look more like upholstered couches.
+- 2026-05-26: Tuned the couch materials toward a softer fabric finish.
+- 2026-05-26: Increased cushion depth on the couch models.
+- 2026-05-26: Made the couch cushions puffier.
+- 2026-05-26: Rounded the cushions to improve the puffy look.
+- 2026-05-26: Removed the center cushion bump and matched the back pillow volume.
+- 2026-05-26: Increased the volume of the seat and back cushions.
+- 2026-05-26: Removed the sofa pillows.
+- 2026-05-26: Hardened object deletion with resource disposal.
+- 2026-05-26: Corrected object removal to use the actual scene parent.
+- 2026-05-26: Swapped the branding text for `Noek_LogoText.svg`.
+- 2026-05-26: Kept the text brand and wired in `Noek_Favicon.png` as the site favicon.
+- 2026-05-26: Rolled the favicon back to the original SVG.
+
 ## Session Snapshot (2026-05-22)
 ### Summary — End of day
 - Implemented inline validation and `Opslaan` in Kamerinstellingen; room name now updates live in the top bar.
@@ -64,6 +125,7 @@ This is the running log for the work we do in this project. I will keep it updat
 
 | Date | Request | Status | Notes |
 | --- | --- | --- | --- |
+| 2026-05-25 | Replace the room placeholders with screenshot-accurate furniture models. | Done | Added procedural bookshelf, desk, desk chair, sofa, carpet, and side-chair placeholders and registered their ids in both the scene and asset panel. |
 | 2026-05-25 | Add a small horizontal offset to the hamburger dropdown. | Done | Shifted the dropdown 4px from the right so it lines up more naturally with the avatar edge on small screens. |
 | 2026-05-25 | Align the hamburger dropdown panel with the navbar on small screens. | Done | Anchored the dropdown to the right edge of the navbar action cluster and constrained its width to viewport space so it no longer clips off-screen. |
 | 2026-05-25 | Make the tablet hamburger reliably clickable. | Done | Gave the hamburger its own hit area and stacking priority so it no longer gets masked by the header layout when the bar collapses. |
@@ -436,6 +498,21 @@ Goal: quickly show core flows — place media, transform, save/load — to demon
 
 1:45 — Save and reload (30–45s)
 - Click `💾 Save` (top bar) — note success alert.
+
+## Wrap-up (2026-05-26)
+
+- **Status:** User wrapping up for the day and will commit latest changes locally.
+- **Notes:** Branding/logo edits completed; logo class rename applied; small CSS tweak added so the SVG wordmark renders correctly.
+
+## Next Session Plan (Start of next working session)
+
+Planned priorities for the next session (as requested by the user):
+
+1. **Make Save/load function actually function** — verify & fix persistence flows (localStorage → optional Supabase integration), test round-trip save/load for multiple objects and media types. (Status: not-started)
+2. **Co-editor: implement first-time tutorial** — add an onboarding flow for co-editors that explains basic placement, transform, and save/load. (Status: not-started)
+3. **Co-editor: start visitor side features** — begin building the visitor preview mode and limited-interaction behavior. (Status: not-started)
+
+I updated the project todo list with these items so we can track progress. Once you've committed the latest changes, I can start on task (1) immediately and report back with progress updates.
 - Refresh the page to simulate returning later (optional: do this live).
 - Click `📂 Load` — show scene restored with photo/audio and transforms intact.
 
