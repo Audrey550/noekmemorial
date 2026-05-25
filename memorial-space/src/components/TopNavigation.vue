@@ -1,5 +1,6 @@
 <script setup>
 import { ref } from 'vue'
+import noekLogoTextUrl from '../assets/Noek_LogoText.svg'
 
 const navItems = [
   { label: 'Home', href: '#' },
@@ -17,8 +18,7 @@ const activeItem = ref('Home')
     <div class="nav-container">
       <!-- Logo Section -->
       <div class="nav-logo">
-        <!-- Replace with your actual logo -->
-        <span class="logo-text">Noek</span>
+        <img class="logo-mark" :src="noekLogoTextUrl" alt="Noek" />
       </div>
 
       <!-- Menu Items -->
@@ -69,11 +69,10 @@ const activeItem = ref('Home')
   gap: 0.5rem;
 }
 
-.logo-text {
-  font-size: 1.5rem;
-  font-weight: 700;
-  color: #2d1b4e;
-  font-family: 'Alpino', sans-serif;
+.logo-mark {
+  display: block;
+  height: 34px;
+  width: auto;
 }
 
 /* Menu Items */
