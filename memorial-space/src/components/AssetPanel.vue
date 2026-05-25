@@ -24,13 +24,25 @@ const props = defineProps({
     type: Array,
     default: () => [],
   },
+  initialModelCategory: {
+    type: String,
+    default: '',
+  },
+  currentSoundSettings: {
+    type: Object,
+    default: () => ({
+      enabled: false,
+      presetId: 'room-tone',
+      volume: 0.45,
+    }),
+  },
   isAdmin: {
     type: Boolean,
     default: false,
   },
 })
 
-const emit = defineEmits(['add-asset', 'toggle-floor', 'close-panel', 'apply-room-theme', 'place-photo', 'place-message', 'place-candle', 'place-audio', 'place-video'])
+const emit = defineEmits(['add-asset', 'toggle-floor', 'close-panel', 'apply-room-theme', 'apply-sound', 'place-photo', 'place-message', 'place-candle', 'place-audio', 'place-video'])
 
 const mediaMode = ref('chooser')
 const photoSourceMode = ref('gallery')
@@ -82,6 +94,7 @@ const candleSizes = [
 
 const panelTitle = {
   room: 'Ruimte',
+  sound: 'Geluid',
   media: 'Media',
   messages: 'Berichten',
   family: 'Kaarsje',
@@ -90,6 +103,7 @@ const panelTitle = {
 
 const panelSubtitle = {
   room: 'Kies een thema voor muren en vloer.',
+  sound: 'Kies een rustige geluidslaag die past bij de ruimte.',
   media: 'Voeg foto, audio of video toe aan de ruimte.',
   messages: 'Bekijk en verzamel herinneringen.',
   family: 'Laat een lichtje of familiebericht achter.',
@@ -97,6 +111,19 @@ const panelSubtitle = {
 }
 
 const selectedRoomThemeId = ref('')
+
+const soundPresets = [
+  { id: 'room-tone', label: 'Rustige sfeer', detail: 'Zachte kamerklank met een warme basis.', icon: '🌫️' },
+  { id: 'breeze', label: 'Bries', detail: 'Lichte ruis alsof er zacht wind door de ruimte gaat.', icon: '🍃' },
+  { id: 'rain', label: 'Regen', detail: 'Zachte regenachtige achtergrond voor een rustige sfeer.', icon: '🌧️' },
+  { id: 'crackle', label: 'Kaarsgeknetter', detail: 'Heel subtiel, warm geknetter als bij een kaars of haard.', icon: '🕯️' },
+]
+
+const selectedSoundState = computed(() => props.currentSoundSettings || {
+  enabled: false,
+  presetId: 'room-tone',
+  volume: 0.45,
+})
 
 const fallbackRoomThemes = [
   {
@@ -247,8 +274,9 @@ const isActiveTheme = (themeId) => selectedRoomThemeState.value?.presetId === th
 // Models panel data (scaffold)
 const modelCategories = [
   { id: 'meubels', label: 'Meubels' },
-  { id: 'planten', label: 'Planten' },
   { id: 'apparaten', label: 'Apparaten' },
+  { id: 'licht', label: 'Licht' },
+  { id: 'planten', label: 'Planten' },
   { id: 'hobby', label: 'Hobby' },
   { id: 'voertuigen', label: 'Voertuigen' },
 ]
@@ -265,6 +293,11 @@ const selectedModelItems = computed(() => {
 
 // simple scaffold of models per category (placeholders)
 const modelBank = {
+  licht: [
+    { id: 'lamp_floor_01', name: 'Staande lamp', detail: 'Hoge vloerlamp voor zachte sfeer in de hoek.', icon: '🛋️' },
+    { id: 'lamp_table_01', name: 'Tafellamp', detail: 'Kleine lamp voor een kast of bijzettafel.', icon: '💡' },
+    { id: 'lamp_hanging_01', name: 'Hanglamp', detail: 'Sfeervolle hanglamp voor boven een tafel.', icon: '🏮' },
+  ],
   meubels: [
     { id: 'chair_01', name: 'Stoel', detail: 'Lichte houten stoel voor in een kamerhoek.', icon: '💺' },
     { id: 'table_01', name: 'Bijzettafel', detail: 'Klein tafeltje voor een plant of kaars.', icon: '🪑' },
@@ -276,18 +309,35 @@ const modelBank = {
   ],
   apparaten: [
     { id: 'speaker_01', name: 'Luidspreker', detail: 'Decoratief audio-object voor de ruimte.', icon: '🔊' },
-    { id: 'lamp_01', name: 'Staande lamp', detail: 'Sfeerlamp voor extra warmte.', icon: '💡' },
+    { id: 'tv_01', name: 'Televisie', detail: 'Modern scherm voor een rustige leefruimte.', icon: '📺' },
+    { id: 'laptop_01', name: 'Laptop', detail: 'Compact werk- of studieapparaat.', icon: '💻' },
   ],
   hobby: [
     { id: 'guitar_01', name: 'Gitaar', detail: 'Persoonlijk object voor een hobbyhoek.', icon: '🎸' },
-    { id: 'bike_01', name: 'Fiets', detail: 'Decoratief object met wat meer volume.', icon: '🚲' },
+    { id: 'easel_01', name: 'Schildersezel', detail: 'Rustig creatief object voor teken- of schilderhoek.', icon: '🖼️' },
+    { id: 'ball_01', name: 'Voetbal', detail: 'Eenvoudig sportobject voor een actieve hobbyhoek.', icon: '⚽' },
   ],
   voertuigen: [
+    { id: 'bike_01', name: 'Fiets', detail: 'Vervoersmiddel met een speels en herkenbaar silhouet.', icon: '🚲' },
     { id: 'car_01', name: 'Auto', detail: 'Klein voertuig voor een speels accent.', icon: '🚗' },
   ],
 }
 
 const showModelSubmenu = ref(false)
+
+watch(() => [props.panelType, props.initialModelCategory], ([panelType, initialModelCategory]) => {
+  if (panelType !== 'models') {
+    return
+  }
+
+  if (initialModelCategory) {
+    selectedModelCategory.value = initialModelCategory
+    showModelSubmenu.value = true
+    return
+  }
+
+  showModelSubmenu.value = false
+})
 
 const selectModelCategory = (catId) => {
   selectedModelCategory.value = catId
@@ -440,6 +490,29 @@ const openMediaOption = (optionId) => {
   }
 
   mediaMode.value = 'coming-soon'
+}
+
+const toggleSoundEnabled = () => {
+  emit('apply-sound', {
+    ...selectedSoundState.value,
+    enabled: !selectedSoundState.value.enabled,
+  })
+}
+
+const selectSoundPreset = (presetId) => {
+  emit('apply-sound', {
+    ...selectedSoundState.value,
+    presetId,
+    enabled: true,
+  })
+}
+
+const updateSoundVolume = (event) => {
+  const nextVolume = Math.max(0, Math.min(1, Number(event.target.value) / 100 || 0))
+  emit('apply-sound', {
+    ...selectedSoundState.value,
+    volume: nextVolume,
+  })
 }
 
 const backToMediaChooser = () => {
@@ -732,17 +805,6 @@ const placeCandle = () => {
       </div>
 
       <div class="panel-actions">
-        <button
-          v-if="props.panelType !== 'room'"
-          type="button"
-          class="floor-panel-toggle"
-          :aria-pressed="showFloor"
-          :title="showFloor ? 'Verberg vloer' : 'Toon vloer'"
-          @click="handleToggleFloor"
-        >
-          {{ showFloor ? 'Vloer aan' : 'Vloer uit' }}
-        </button>
-
         <button type="button" class="close-panel-button" aria-label="Sluit paneel" @click="handleClosePanel">
           ×
         </button>
@@ -863,6 +925,47 @@ const placeCandle = () => {
           </div>
         </div>
       </div>
+    </div>
+
+    <div v-else-if="panelType === 'sound'" class="sound-panel">
+      <section class="photo-card-shell">
+        <div class="photo-flow-title">
+          <h3>Geluid</h3>
+          <p>Kies een eenvoudige geluidslaag voor de ruimte. Eén geluid tegelijk.</p>
+        </div>
+
+        <div class="sound-status-row">
+          <span class="sound-status-pill" :class="{ active: selectedSoundState.enabled }">
+            {{ selectedSoundState.enabled ? 'Aan' : 'Uit' }}
+          </span>
+
+          <button type="button" class="family-action sound-toggle-button" @click="toggleSoundEnabled">
+            {{ selectedSoundState.enabled ? 'Geluid uit' : 'Geluid aan' }}
+          </button>
+        </div>
+
+        <label class="sound-volume-control">
+          <span>Volume</span>
+          <input type="range" min="0" max="100" :value="Math.round((selectedSoundState.volume ?? 0.45) * 100)" @input="updateSoundVolume" />
+        </label>
+
+        <p class="photo-flow-copy">Selecteer een sfeer die past bij de kamer.</p>
+
+        <div class="sound-preset-grid">
+          <button
+            v-for="preset in soundPresets"
+            :key="preset.id"
+            type="button"
+            class="sound-preset-card"
+            :class="{ active: selectedSoundState.presetId === preset.id }"
+            @click="selectSoundPreset(preset.id)"
+          >
+            <span class="sound-preset-icon">{{ preset.icon }}</span>
+            <span class="sound-preset-name">{{ preset.label }}</span>
+            <p class="sound-preset-detail">{{ preset.detail }}</p>
+          </button>
+        </div>
+      </section>
     </div>
 
     <div v-else-if="panelType === 'media' && mediaMode === 'chooser'" class="asset-grid media-chooser-grid">
@@ -2400,6 +2503,102 @@ input[type="file"][accept*="audio"] {
   padding: 12px;
   overflow-y: auto;
   max-height: calc(78vh - 64px);
+}
+
+.sound-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 14px 18px;
+  overflow-y: auto;
+  flex: 1;
+}
+
+.sound-status-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-bottom: 4px;
+}
+
+.sound-status-pill {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 58px;
+  padding: 8px 12px;
+  border-radius: 999px;
+  background: rgba(255,255,255,0.72);
+  border: 1px solid rgba(54,42,92,0.12);
+  color: #2a1d3b;
+  font-weight: 800;
+}
+
+.sound-status-pill.active {
+  background: linear-gradient(180deg,#fdeff6,#f6e6f0);
+  border-color: rgba(195,121,166,0.26);
+}
+
+.sound-toggle-button {
+  margin-left: auto;
+}
+
+.sound-volume-control {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  font-family: 'Outfit', 'Segoe UI', sans-serif;
+  font-size: 13px;
+  font-weight: 700;
+  color: rgba(42, 29, 59, 0.86);
+}
+
+.sound-volume-control input[type="range"] {
+  width: 100%;
+  accent-color: #c379a6;
+}
+
+.sound-preset-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 10px;
+}
+
+.sound-preset-card {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
+  padding: 14px;
+  border-radius: 16px;
+  border: 1px solid rgba(18,18,18,0.06);
+  background: #ffffff;
+  box-shadow: 0 6px 18px rgba(48,38,78,0.06);
+  text-align: left;
+  cursor: pointer;
+}
+
+.sound-preset-card.active {
+  background: linear-gradient(180deg,#fdeff6,#f6e6f0);
+  border-color: rgba(195,121,166,0.24);
+}
+
+.sound-preset-icon {
+  font-size: 20px;
+}
+
+.sound-preset-name {
+  font-weight: 800;
+  color: #1f1330;
+}
+
+.sound-preset-detail {
+  margin: 0;
+  font-family: 'Outfit', 'Segoe UI', sans-serif;
+  font-size: 12px;
+  line-height: 1.45;
+  color: rgba(26, 26, 26, 0.72);
 }
 
 .models-submenu-copy {
