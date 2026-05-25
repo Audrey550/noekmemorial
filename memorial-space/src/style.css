@@ -237,6 +237,16 @@ p {
   inset: 14px 6px;
 }
 
+/* Ensure actual image logos using the .brand-mark class are not rotated or framed
+   (the utility `.brand-mark` creates a rotated framed block used elsewhere). */
+img.brand-mark-image {
+  transform: none;
+  border: none;
+  height: 38px;
+  width: auto;
+  display: block;
+}
+
 .surface-panel {
   border: 1px solid var(--border-soft);
   background: var(--surface);
