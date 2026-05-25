@@ -33,6 +33,7 @@ const showRoomSettingsModal = ref(false)
 const showAdminSettingsModal = ref(false)
 const editDisplayName = ref('')
 const visitorPreviewMode = ref(false)
+const showTopNavMenu = ref(false)
 
 // initialize username from current user when available
 if (props.currentUser && props.currentUser.displayName) {
@@ -52,7 +53,16 @@ const setVisitorPreviewMode = (enabled) => {
   showQuickPanel.value = false
   showRoomSettingsModal.value = false
   showAdminSettingsModal.value = false
+  showTopNavMenu.value = false
   clearSceneSelection()
+}
+
+const toggleTopNavMenu = () => {
+  showTopNavMenu.value = !showTopNavMenu.value
+}
+
+const closeTopNavMenu = () => {
+  showTopNavMenu.value = false
 }
 
 const visitorButtonLabel = computed(() => {
@@ -84,6 +94,12 @@ watch(roomName, () => {
 const sceneObjects = ref([])
 const showQuickPanel = ref(false)
 const activePanel = ref('media')
+const quickPanelModelCategory = ref('')
+const soundSettings = ref({
+  enabled: false,
+  presetId: 'room-tone',
+  volume: 0.45,
+})
 const showFloor = ref(true)
 const showProfileMenu = ref(false)
 const hoveredPhoto = ref(null)
@@ -126,6 +142,214 @@ let photoTextureLoader = new THREE.TextureLoader()
 let raycaster = new THREE.Raycaster()
 let pointer = new THREE.Vector2()
 let panelSwitchTimer = null
+let soundAudioContext = null
+let activeSoundDisposers = []
+let activeSoundTimers = []
+const topNavMenuElement = ref(null)
+
+const clearActiveSound = () => {
+  activeSoundTimers.forEach((timerId) => clearInterval(timerId))
+  activeSoundTimers = []
+
+  activeSoundDisposers.forEach((dispose) => {
+    try {
+      dispose()
+    } catch (error) {
+      console.warn('Failed to dispose sound node', error)
+    }
+  })
+  activeSoundDisposers = []
+}
+
+const registerSoundDisposer = (dispose) => {
+  activeSoundDisposers.push(dispose)
+}
+
+const ensureSoundContext = async () => {
+  if (typeof window === 'undefined') return null
+
+  if (!soundAudioContext) {
+    const AudioContextCtor = window.AudioContext || window.webkitAudioContext
+    if (!AudioContextCtor) return null
+    soundAudioContext = new AudioContextCtor()
+  }
+
+  if (soundAudioContext.state === 'suspended') {
+    try {
+      await soundAudioContext.resume()
+    } catch (error) {
+      console.warn('Failed to resume sound context', error)
+    }
+  }
+
+  return soundAudioContext
+}
+
+const createNoiseBuffer = (context, durationSeconds = 1.5) => {
+  const frameCount = Math.max(1, Math.floor(context.sampleRate * durationSeconds))
+  const buffer = context.createBuffer(1, frameCount, context.sampleRate)
+  const data = buffer.getChannelData(0)
+
+  for (let index = 0; index < frameCount; index += 1) {
+    data[index] = Math.random() * 2 - 1
+  }
+
+  return buffer
+}
+
+const startSoundPreset = async (nextSettings) => {
+  const context = await ensureSoundContext()
+  if (!context) return
+
+  clearActiveSound()
+
+  if (!nextSettings?.enabled) {
+    return
+  }
+
+  const volume = Math.max(0, Math.min(1, Number(nextSettings.volume ?? 0.45)))
+  const presetId = nextSettings.presetId || 'room-tone'
+  const masterGain = context.createGain()
+  masterGain.gain.value = volume
+  masterGain.connect(context.destination)
+  registerSoundDisposer(() => {
+    try { masterGain.disconnect() } catch (error) {}
+  })
+
+  if (presetId === 'breeze') {
+    const source = context.createBufferSource()
+    source.buffer = createNoiseBuffer(context, 2)
+    source.loop = true
+
+    const filter = context.createBiquadFilter()
+    filter.type = 'bandpass'
+    filter.frequency.value = 950
+    filter.Q.value = 0.7
+
+    const lfo = context.createOscillator()
+    const lfoGain = context.createGain()
+    lfo.frequency.value = 0.08
+    lfoGain.gain.value = 0.12
+    lfo.connect(lfoGain).connect(masterGain.gain)
+
+    source.connect(filter).connect(masterGain)
+    source.start()
+    lfo.start()
+
+    registerSoundDisposer(() => {
+      try { source.stop() } catch (error) {}
+      try { source.disconnect() } catch (error) {}
+      try { lfo.stop() } catch (error) {}
+      try { lfo.disconnect() } catch (error) {}
+      try { lfoGain.disconnect() } catch (error) {}
+      try { filter.disconnect() } catch (error) {}
+    })
+    return
+  }
+
+  if (presetId === 'rain') {
+    const source = context.createBufferSource()
+    source.buffer = createNoiseBuffer(context, 2)
+    source.loop = true
+
+    const filter = context.createBiquadFilter()
+    filter.type = 'highpass'
+    filter.frequency.value = 1600
+
+    const lfo = context.createOscillator()
+    const lfoGain = context.createGain()
+    lfo.frequency.value = 0.18
+    lfoGain.gain.value = 0.08
+    lfo.connect(lfoGain).connect(masterGain.gain)
+
+    source.connect(filter).connect(masterGain)
+    source.start()
+    lfo.start()
+
+    registerSoundDisposer(() => {
+      try { source.stop() } catch (error) {}
+      try { source.disconnect() } catch (error) {}
+      try { lfo.stop() } catch (error) {}
+      try { lfo.disconnect() } catch (error) {}
+      try { lfoGain.disconnect() } catch (error) {}
+      try { filter.disconnect() } catch (error) {}
+    })
+    return
+  }
+
+  if (presetId === 'crackle') {
+    const scheduleCrackle = () => {
+      const burstSource = context.createBufferSource()
+      burstSource.buffer = createNoiseBuffer(context, 0.18)
+
+      const filter = context.createBiquadFilter()
+      filter.type = 'bandpass'
+      filter.frequency.value = 2400
+      filter.Q.value = 0.9
+
+      const burstGain = context.createGain()
+      burstGain.gain.setValueAtTime(0.0001, context.currentTime)
+      burstGain.gain.exponentialRampToValueAtTime(Math.max(0.01, volume * 0.22), context.currentTime + 0.02)
+      burstGain.gain.exponentialRampToValueAtTime(0.0001, context.currentTime + 0.18)
+
+      burstSource.connect(filter).connect(burstGain).connect(masterGain)
+      burstSource.start()
+      burstSource.stop(context.currentTime + 0.2)
+
+      registerSoundDisposer(() => {
+        try { burstSource.stop() } catch (error) {}
+        try { burstSource.disconnect() } catch (error) {}
+        try { burstGain.disconnect() } catch (error) {}
+        try { filter.disconnect() } catch (error) {}
+      })
+    }
+
+    scheduleCrackle()
+    const timerId = setInterval(() => {
+      scheduleCrackle()
+    }, 850)
+    activeSoundTimers.push(timerId)
+    registerSoundDisposer(() => clearInterval(timerId))
+    return
+  }
+
+  const source = context.createBufferSource()
+  source.buffer = createNoiseBuffer(context, 2)
+  source.loop = true
+
+  const filter = context.createBiquadFilter()
+  filter.type = 'lowpass'
+  filter.frequency.value = 780
+
+  const warmOsc = context.createOscillator()
+  const warmGain = context.createGain()
+  warmOsc.frequency.value = 92
+  warmGain.gain.value = 0.025
+  warmOsc.connect(warmGain).connect(masterGain)
+
+  const lfo = context.createOscillator()
+  const lfoGain = context.createGain()
+  lfo.frequency.value = 0.14
+  lfoGain.gain.value = 0.06
+  lfo.connect(lfoGain).connect(masterGain.gain)
+
+  source.connect(filter).connect(masterGain)
+  source.start()
+  warmOsc.start()
+  lfo.start()
+
+  registerSoundDisposer(() => {
+    try { source.stop() } catch (error) {}
+    try { source.disconnect() } catch (error) {}
+    try { warmOsc.stop() } catch (error) {}
+    try { warmOsc.disconnect() } catch (error) {}
+    try { warmGain.disconnect() } catch (error) {}
+    try { lfo.stop() } catch (error) {}
+    try { lfo.disconnect() } catch (error) {}
+    try { lfoGain.disconnect() } catch (error) {}
+    try { filter.disconnect() } catch (error) {}
+  })
+}
 
 // Texture file paths grouped by surface type
 const wallpaperPath = '/textures/walls/wallpaper.svg'
@@ -133,15 +357,15 @@ const woodPath = '/textures/floors/wood.svg'
 const stonePath = '/textures/floors/stone.svg'
 
 const defaultWallMaterials = [
-  { id: 'whitepaper', label: 'White paper', roughness: 0.92, metalness: 0.01, map: '/textures/walls/wallpaper_whitepaper.jpg', repeat: [4,4] },
-  { id: 'pinkbrick', label: 'Pink brick', roughness: 0.7, metalness: 0.02, map: '/textures/walls/wallpaper_pinkbrick.jpg', repeat: [3,3] },
-  { id: 'greybrick', label: 'Grey brick', roughness: 0.78, metalness: 0.02, map: '/textures/walls/wallpaper_greybrick.jpg', repeat: [3,3] },
+  { id: 'whitepaper', label: 'White paper', roughness: 0.92, metalness: 0.01, map: '/textures/walls/wallpaper_whitepaper.jpg', repeat: [0.95, 1.3] },
+  { id: 'pinkbrick', label: 'Pink brick', roughness: 0.7, metalness: 0.02, map: '/textures/walls/wallpaper_pinkbrick.jpg', repeat: [1.18, 0.98] },
+  { id: 'greybrick', label: 'Grey brick', roughness: 0.78, metalness: 0.02, map: '/textures/walls/wallpaper_greybrick.jpg', repeat: [1.12, 0.98] },
 ]
 
 const defaultFloorMaterials = [
-  { id: 'wood_white', label: 'White beach wood', roughness: 0.6, metalness: 0.03, map: '/textures/floors/wood_whitebeach.jpg', repeat: [6,6] },
-  { id: 'wood_dark', label: 'Dark brown wood', roughness: 0.55, metalness: 0.03, map: '/textures/floors/wood_darkbrown.jpg', repeat: [6,6] },
-  { id: 'wood_bw', label: 'Black/white wood', roughness: 0.6, metalness: 0.03, map: '/textures/floors/wood_blackwhites.jpg', repeat: [6,6] },
+  { id: 'wood_white', label: 'White beach wood', roughness: 0.6, metalness: 0.03, map: '/textures/floors/wood_whitebeach.jpg', repeat: [1.28, 1.0] },
+  { id: 'wood_dark', label: 'Dark brown wood', roughness: 0.55, metalness: 0.03, map: '/textures/floors/wood_darkbrown.jpg', repeat: [1.18, 1.0] },
+  { id: 'wood_bw', label: 'Black/white wood', roughness: 0.6, metalness: 0.03, map: '/textures/floors/wood_blackwhites.jpg', repeat: [1.24, 1.0] },
 ]
 
 const roomThemePresets = [
@@ -253,6 +477,13 @@ const colorableAssetIds = new Set([
   'candle',
   'photo-frame',
   'flower',
+  'lamp_floor_01',
+  'lamp_table_01',
+  'lamp_hanging_01',
+  'tv_01',
+  'laptop_01',
+  'easel_01',
+  'ball_01',
   'chair_01',
   'table_01',
   'sofa_01',
@@ -517,8 +748,8 @@ const applyRoomTheme = (themeUpdate, persist = true) => {
         try {
           photoTextureLoader.load(wallVariant.map, (tex) => {
             tex.wrapS = tex.wrapT = THREE.RepeatWrapping
-            // use per-texture repeat when provided, otherwise default to 4x4
-            const wRepeat = Array.isArray(wallVariant.repeat) ? wallVariant.repeat : [4, 4]
+            // use per-texture repeat when provided, otherwise default to a single stretch
+            const wRepeat = Array.isArray(wallVariant.repeat) ? wallVariant.repeat : [1, 1]
             tex.repeat.set(wRepeat[0], wRepeat[1])
             tex.encoding = THREE.sRGBEncoding
             wallMaterial.map = tex
@@ -541,7 +772,7 @@ const applyRoomTheme = (themeUpdate, persist = true) => {
         try {
           photoTextureLoader.load(floorVariant.map, (tex) => {
             tex.wrapS = tex.wrapT = THREE.RepeatWrapping
-            const fRepeat = Array.isArray(floorVariant.repeat) ? floorVariant.repeat : [6, 6]
+            const fRepeat = Array.isArray(floorVariant.repeat) ? floorVariant.repeat : [1, 1]
             tex.repeat.set(fRepeat[0], fRepeat[1])
             tex.encoding = THREE.sRGBEncoding
             floorMaterial.map = tex
@@ -594,6 +825,22 @@ const toggleBlockMember = (id) => {
 
 const handleApplyRoomTheme = (themeUpdate) => {
   applyRoomTheme(themeUpdate)
+}
+
+const handleApplySound = async (soundUpdate) => {
+  const nextSettings = {
+    ...soundSettings.value,
+    ...soundUpdate,
+    volume: Math.max(0, Math.min(1, Number(soundUpdate?.volume ?? soundSettings.value.volume ?? 0.45))),
+  }
+
+  soundSettings.value = nextSettings
+
+  try {
+    localStorage.setItem('audreySoundSettings', JSON.stringify(nextSettings))
+  } catch (error) {}
+
+  await startSoundPreset(nextSettings)
 }
 
 const deleteRoom = () => {
@@ -673,7 +920,7 @@ const deserializeSceneState = async (jsonString) => {
       } else if (objData.assetId && colorableAssetIds.has(objData.assetId)) {
         let model = null
 
-        if (['candle', 'photo-frame', 'flower'].includes(objData.assetId)) {
+        if (['candle', 'photo-frame', 'flower', 'lamp_floor_01', 'lamp_table_01', 'lamp_hanging_01', 'tv_01', 'laptop_01', 'easel_01', 'ball_01'].includes(objData.assetId)) {
           model = createPlaceholderModel(objData.assetId)
         } else {
           const asset = availableAssets.find(a => a.id === objData.assetId)
@@ -747,13 +994,15 @@ const loadSceneFromStorage = async () => {
   }
 }
 
-const openQuickPanel = (panelType) => {
+const openQuickPanel = (panelType, modelCategory = '') => {
   if (panelSwitchTimer) {
     clearTimeout(panelSwitchTimer)
     panelSwitchTimer = null
   }
 
-  if (activePanel.value === panelType && showQuickPanel.value) {
+  const nextModelCategory = panelType === 'models' ? modelCategory : ''
+
+  if (activePanel.value === panelType && showQuickPanel.value && quickPanelModelCategory.value === nextModelCategory) {
     showQuickPanel.value = false
     return
   }
@@ -762,6 +1011,7 @@ const openQuickPanel = (panelType) => {
     showQuickPanel.value = false
     panelSwitchTimer = setTimeout(() => {
       activePanel.value = panelType
+      quickPanelModelCategory.value = nextModelCategory
       showQuickPanel.value = true
       panelSwitchTimer = null
     }, 120)
@@ -769,6 +1019,7 @@ const openQuickPanel = (panelType) => {
   }
 
   activePanel.value = panelType
+  quickPanelModelCategory.value = nextModelCategory
   showQuickPanel.value = true
 }
 
@@ -777,6 +1028,7 @@ const closeQuickPanel = () => {
     clearTimeout(panelSwitchTimer)
     panelSwitchTimer = null
   }
+  quickPanelModelCategory.value = ''
   showQuickPanel.value = false
 }
 
@@ -1035,18 +1287,22 @@ const saveRoomSettings = () => {
 }
 
 const handleDocumentClick = (event) => {
-  if (!showProfileMenu.value) {
-    return
+  const clickedProfileMenu = profileMenuElement.value && profileMenuElement.value.contains(event.target)
+  const clickedTopNavMenu = topNavMenuElement.value && topNavMenuElement.value.contains(event.target)
+
+  if (showProfileMenu.value && !clickedProfileMenu) {
+    closeProfileMenu()
   }
 
-  if (profileMenuElement.value && !profileMenuElement.value.contains(event.target)) {
-    closeProfileMenu()
+  if (showTopNavMenu.value && !clickedTopNavMenu) {
+    closeTopNavMenu()
   }
 }
 
 const handleDocumentKeydown = (event) => {
   if (event.key === 'Escape') {
     closeProfileMenu()
+    closeTopNavMenu()
   }
 }
 
@@ -1280,6 +1536,126 @@ const createPlaceholderModel = (assetId) => {
     flame.position.y = 0.35
     flame.castShadow = true
     group.add(flame)
+  } else if (assetId === 'lamp_floor_01') {
+    const standMaterial = new THREE.MeshStandardMaterial({ color: '#8c6f54', roughness: 0.75 })
+    const shadeMaterial = new THREE.MeshStandardMaterial({ color: '#f1e7d8', roughness: 0.88, emissive: '#ffdca8', emissiveIntensity: 0.12 })
+
+    const base = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.12, 0.04, 14), standMaterial)
+    base.position.y = 0.02
+    base.castShadow = true
+    group.add(base)
+
+    const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.035, 1.0, 10), standMaterial)
+    pole.position.y = 0.54
+    pole.castShadow = true
+    group.add(pole)
+
+    const shade = new THREE.Mesh(new THREE.CylinderGeometry(0.18, 0.25, 0.3, 12, 1, false), shadeMaterial)
+    shade.position.y = 1.12
+    shade.castShadow = true
+    group.add(shade)
+  } else if (assetId === 'lamp_table_01') {
+    const standMaterial = new THREE.MeshStandardMaterial({ color: '#7a644e', roughness: 0.7 })
+    const shadeMaterial = new THREE.MeshStandardMaterial({ color: '#efe5d8', roughness: 0.85, emissive: '#ffd9a8', emissiveIntensity: 0.15 })
+
+    const base = new THREE.Mesh(new THREE.CylinderGeometry(0.14, 0.18, 0.1, 12), standMaterial)
+    base.position.y = 0.05
+    base.castShadow = true
+    group.add(base)
+
+    const stem = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.03, 0.36, 10), standMaterial)
+    stem.position.y = 0.28
+    stem.castShadow = true
+    group.add(stem)
+
+    const shade = new THREE.Mesh(new THREE.ConeGeometry(0.2, 0.28, 12), shadeMaterial)
+    shade.position.y = 0.56
+    shade.castShadow = true
+    group.add(shade)
+  } else if (assetId === 'lamp_hanging_01') {
+    const cordMaterial = new THREE.MeshStandardMaterial({ color: '#6f5c49', roughness: 0.8 })
+    const shadeMaterial = new THREE.MeshStandardMaterial({ color: '#f3e8d9', roughness: 0.82, emissive: '#ffe0b5', emissiveIntensity: 0.1 })
+
+    const cord = new THREE.Mesh(new THREE.CylinderGeometry(0.012, 0.012, 0.7, 8), cordMaterial)
+    cord.position.y = 0.75
+    cord.castShadow = true
+    group.add(cord)
+
+    const shade = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.22, 0.24, 12, 1, false), shadeMaterial)
+    shade.position.y = 0.36
+    shade.castShadow = true
+    group.add(shade)
+  } else if (assetId === 'tv_01') {
+    const frameMaterial = new THREE.MeshStandardMaterial({ color: '#2f2f34', roughness: 0.75 })
+    const screenMaterial = new THREE.MeshStandardMaterial({ color: '#14151a', roughness: 0.9, emissive: '#1a1e2b', emissiveIntensity: 0.08 })
+    const standMaterial = new THREE.MeshStandardMaterial({ color: '#9c8b77', roughness: 0.6 })
+
+    const frame = new THREE.Mesh(new THREE.BoxGeometry(0.92, 0.56, 0.06), frameMaterial)
+    frame.castShadow = true
+    group.add(frame)
+
+    const screen = new THREE.Mesh(new THREE.BoxGeometry(0.84, 0.48, 0.02), screenMaterial)
+    screen.position.z = 0.04
+    group.add(screen)
+
+    const stand = new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.12, 0.22), standMaterial)
+    stand.position.set(0, -0.34, 0)
+    stand.castShadow = true
+    group.add(stand)
+  } else if (assetId === 'laptop_01') {
+    const bodyMaterial = new THREE.MeshStandardMaterial({ color: '#4a4d57', roughness: 0.7 })
+    const screenMaterial = new THREE.MeshStandardMaterial({ color: '#121418', roughness: 0.92, emissive: '#1d2230', emissiveIntensity: 0.08 })
+
+    const base = new THREE.Mesh(new THREE.BoxGeometry(0.62, 0.04, 0.42), bodyMaterial)
+    base.position.y = 0.02
+    base.castShadow = true
+    group.add(base)
+
+    const screen = new THREE.Mesh(new THREE.BoxGeometry(0.58, 0.34, 0.03), screenMaterial)
+    screen.position.set(0, 0.2, -0.16)
+    screen.rotation.x = -0.38
+    screen.castShadow = true
+    group.add(screen)
+  } else if (assetId === 'easel_01') {
+    const woodMaterial = new THREE.MeshStandardMaterial({ color: '#9d7450', roughness: 0.8 })
+    const canvasMaterial = new THREE.MeshStandardMaterial({ color: '#f6f2ea', roughness: 0.95 })
+
+    const legGeo = new THREE.CylinderGeometry(0.02, 0.02, 0.82, 8)
+    const leftLeg = new THREE.Mesh(legGeo, woodMaterial)
+    leftLeg.position.set(-0.18, 0.4, 0)
+    leftLeg.rotation.z = 0.12
+    leftLeg.castShadow = true
+    group.add(leftLeg)
+
+    const rightLeg = new THREE.Mesh(legGeo, woodMaterial)
+    rightLeg.position.set(0.18, 0.4, 0)
+    rightLeg.rotation.z = -0.12
+    rightLeg.castShadow = true
+    group.add(rightLeg)
+
+    const support = new THREE.Mesh(new THREE.CylinderGeometry(0.015, 0.015, 0.62, 8), woodMaterial)
+    support.position.y = 0.46
+    support.rotation.z = Math.PI / 2
+    support.castShadow = true
+    group.add(support)
+
+    const canvas = new THREE.Mesh(new THREE.BoxGeometry(0.34, 0.44, 0.03), canvasMaterial)
+    canvas.position.set(0, 0.62, 0.02)
+    canvas.rotation.z = -0.08
+    canvas.castShadow = true
+    group.add(canvas)
+  } else if (assetId === 'ball_01') {
+    const ballMaterial = new THREE.MeshStandardMaterial({ color: '#ea5a5a', roughness: 0.65 })
+    const ball = new THREE.Mesh(new THREE.SphereGeometry(0.16, 18, 18), ballMaterial)
+    ball.castShadow = true
+    ball.receiveShadow = true
+    group.add(ball)
+
+    const stripeMaterial = new THREE.MeshStandardMaterial({ color: '#ffffff', roughness: 0.5 })
+    const stripe = new THREE.Mesh(new THREE.TorusGeometry(0.11, 0.025, 8, 18), stripeMaterial)
+    stripe.rotation.x = Math.PI / 2
+    stripe.castShadow = true
+    group.add(stripe)
   } else if (assetId === 'photo-frame') {
     // Picture frame
     const frameMaterial = new THREE.MeshStandardMaterial({ color: '#8b7355', roughness: 0.7 })
@@ -1520,6 +1896,19 @@ onMounted(() => {
 
   // load room metadata for privacy/invite demo
   loadRoomMeta()
+
+  try {
+    const storedSoundSettings = localStorage.getItem('audreySoundSettings')
+    if (storedSoundSettings) {
+      const parsedSoundSettings = JSON.parse(storedSoundSettings)
+      soundSettings.value = {
+        ...soundSettings.value,
+        ...parsedSoundSettings,
+        enabled: Boolean(parsedSoundSettings?.enabled),
+        volume: Math.max(0, Math.min(1, Number(parsedSoundSettings?.volume ?? soundSettings.value.volume))),
+      }
+    }
+  } catch (error) {}
 
   scene = new THREE.Scene()
   scene.fog = new THREE.Fog('#ececec', 22, 64)
@@ -1775,6 +2164,13 @@ onMounted(() => {
 
 onBeforeUnmount(() => {
   window.cancelAnimationFrame(animationFrameId)
+  clearActiveSound()
+  if (soundAudioContext) {
+    try {
+      soundAudioContext.close()
+    } catch (error) {}
+    soundAudioContext = null
+  }
   if (renderer) {
     renderer.domElement.removeEventListener('pointermove', handleCanvasPointerMove)
     renderer.domElement.removeEventListener('click', handleCanvasClick)
@@ -1814,7 +2210,8 @@ onBeforeUnmount(() => {
       <div class="top-bar-controls">
         <button
           type="button"
-          class="floor-toggle"
+          class="floor-toggle topnav-accent-button"
+          :class="{ active: showFloor }"
           :aria-pressed="showFloor"
           :title="showFloor ? 'Verberg vloer' : 'Toon vloer'"
           @click="toggleFloorVisibility"
@@ -1835,47 +2232,91 @@ onBeforeUnmount(() => {
         <button v-if="props.currentUser && props.currentUser.role === 'admin'" type="button" class="floor-toggle" title="Schakel privacy van kamer" @click="toggleRoomPrivacy">
           {{ roomPrivacy === 'private' ? 'Privé' : 'Openbaar' }}
         </button>
-
       </div>
 
       <div class="room-title">{{ roomName || 'Onbekende kamer' }}</div>
 
-      <div class="profile-area">
-        <span class="profile-name">{{ username }}</span>
-        <div ref="profileMenuElement" class="profile-menu-wrap">
+      <div class="top-bar-actions">
+        <div ref="topNavMenuElement" class="top-nav-menu-wrap">
           <button
             type="button"
-            class="avatar"
-            :style="{ backgroundImage: props.currentUser && props.currentUser.avatar ? `url(${props.currentUser.avatar})` : undefined, backgroundSize: 'cover' }"
-            aria-haspopup="menu"
-            :aria-expanded="showProfileMenu"
-            aria-label="Open profielmenu"
-            title="Open profielmenu"
-            @click="toggleProfileMenu"
-            @keydown.enter.prevent="openProfileMenu"
-            @keydown.space.prevent="openProfileMenu"
-          ></button>
+            class="top-nav-menu-button"
+            :aria-expanded="showTopNavMenu"
+            aria-label="Open topnavigatie"
+            title="Open topnavigatie"
+            @click="toggleTopNavMenu"
+          >
+            <span aria-hidden="true">☰</span>
+          </button>
 
-            <transition name="profile-fade">
-            <div v-if="showProfileMenu" class="profile-menu" role="menu" aria-label="Profielopties">
-              <template v-if="props.currentUser && props.currentUser.role === 'admin'">
-                <button type="button" class="profile-menu-item" role="menuitem" @click="openAdminSettings">
-                  {{ accountSettingsLabel }}
-                </button>
-                <button type="button" class="profile-menu-item" role="menuitem" @click="openRoomSettings">
-                  Kamerinstellingen
-                </button>
-              </template>
-              <template v-else>
-                <button type="button" class="profile-menu-item" role="menuitem" @click="openAdminSettings">
-                  {{ accountSettingsLabel }}
-                </button>
-              </template>
-              <button type="button" class="profile-menu-item" role="menuitem" @click="handleLogout($event)" @mousedown.stop.prevent="handleLogout($event)" tabindex="0">
-                Uitloggen
+          <transition name="profile-fade">
+            <div v-if="showTopNavMenu" class="top-nav-menu" role="menu" aria-label="Topnavigatie">
+              <button
+                type="button"
+                class="floor-toggle topnav-accent-button"
+                :class="{ active: showFloor }"
+                :aria-pressed="showFloor"
+                :title="showFloor ? 'Verberg vloer' : 'Toon vloer'"
+                @click="toggleFloorVisibility"
+              >
+                {{ showFloor ? 'Vloer aan' : 'Vloer uit' }}
+              </button>
+
+              <button
+                v-if="props.currentUser && (props.currentUser.role === 'admin' || props.currentUser.role === 'editor')"
+                type="button"
+                class="floor-toggle"
+                :title="visitorPreviewMode ? 'Terug naar bewerkmodus' : 'Voorvertoning bezoeker'"
+                @click="setVisitorPreviewMode(!visitorPreviewMode)"
+              >
+                {{ visitorButtonLabel }}
+              </button>
+
+              <button v-if="props.currentUser && props.currentUser.role === 'admin'" type="button" class="floor-toggle" title="Schakel privacy van kamer" @click="toggleRoomPrivacy">
+                {{ roomPrivacy === 'private' ? 'Privé' : 'Openbaar' }}
               </button>
             </div>
           </transition>
+        </div>
+
+        <div class="profile-area">
+          <span class="profile-name">{{ username }}</span>
+          <div ref="profileMenuElement" class="profile-menu-wrap">
+            <button
+              type="button"
+              class="avatar"
+              :style="{ backgroundImage: props.currentUser && props.currentUser.avatar ? `url(${props.currentUser.avatar})` : undefined, backgroundSize: 'cover' }"
+              aria-haspopup="menu"
+              :aria-expanded="showProfileMenu"
+              aria-label="Open profielmenu"
+              title="Open profielmenu"
+              @click="toggleProfileMenu"
+              @keydown.enter.prevent="openProfileMenu"
+              @keydown.space.prevent="openProfileMenu"
+            ></button>
+
+            <transition name="profile-fade">
+              <div v-if="showProfileMenu" class="profile-menu" role="menu">
+                <div class="profile-menu-username">{{ username }}</div>
+                <template v-if="props.currentUser && props.currentUser.role === 'admin'">
+                  <button type="button" class="profile-menu-item" role="menuitem" @click="openAdminSettings">
+                    {{ accountSettingsLabel }}
+                  </button>
+                  <button type="button" class="profile-menu-item" role="menuitem" @click="openRoomSettings">
+                    Kamerinstellingen
+                  </button>
+                </template>
+                <template v-else>
+                  <button type="button" class="profile-menu-item" role="menuitem" @click="openAdminSettings">
+                    {{ accountSettingsLabel }}
+                  </button>
+                </template>
+                <button type="button" class="profile-menu-item" role="menuitem" @click="handleLogout($event)" @mousedown.stop.prevent="handleLogout($event)" tabindex="0">
+                  Uitloggen
+                </button>
+              </div>
+            </transition>
+          </div>
         </div>
       </div>
     </header>
@@ -1898,11 +2339,7 @@ onBeforeUnmount(() => {
               <span class="dock-icon">🧩</span>
               <span class="dock-label">Modellen</span>
             </button>
-            <button type="button" class="dock-button" :class="{ active: showQuickPanel && activePanel === 'family' }" @click="openQuickPanel('family')">
-              <span class="dock-icon">💡</span>
-              <span class="dock-label">Licht</span>
-            </button>
-            <button type="button" class="dock-button" :class="{ active: showQuickPanel && activePanel === 'media' }" @click="openQuickPanel('media')">
+            <button type="button" class="dock-button" :class="{ active: showQuickPanel && activePanel === 'sound' }" @click="openQuickPanel('sound')">
               <span class="dock-icon">🔊</span>
               <span class="dock-label">Geluid</span>
             </button>
@@ -1921,9 +2358,12 @@ onBeforeUnmount(() => {
         :panel-type="activePanel"
         :current-room-theme="roomTheme"
         :room-themes="roomThemePresets"
+        :initial-model-category="quickPanelModelCategory"
+        :current-sound-settings="soundSettings"
         :is-admin="effectiveRole === 'admin'"
         @add-asset="handleAddAsset"
         @apply-room-theme="handleApplyRoomTheme"
+        @apply-sound="handleApplySound"
         @toggle-floor="toggleFloorVisibility"
         @close-panel="closeQuickPanel"
         @place-photo="handlePlacePhoto"
@@ -1972,38 +2412,38 @@ onBeforeUnmount(() => {
           <button type="button" class="selection-close-button" @click="clearSceneSelection">×</button>
         </div>
 
-          <div v-if="!hideDeleteHint" class="selection-hint">
-            <span>Druk op de Delete-toets om het geselecteerde object te verwijderen</span>
-            <button type="button" class="selection-hint-close" @click="dismissDeleteHint" aria-label="Sluit hint">×</button>
-          </div>
+        <div v-if="!hideDeleteHint" class="selection-hint">
+          <span>Druk op de Delete-toets om het geselecteerde object te verwijderen</span>
+          <button type="button" class="selection-hint-close" @click="dismissDeleteHint" aria-label="Sluit hint">×</button>
+        </div>
 
-          <div v-if="canEditSelectedObjectColor" class="control-group color-group">
-            <div class="control-label">Kleur</div>
-            <div class="color-row">
-              <div class="color-swatch-grid" role="group" aria-label="Kleuropties">
-                <button
-                  v-for="color in objectColorPalette"
-                  :key="color"
-                  type="button"
-                  class="color-swatch"
-                  :class="{ active: selectedSceneObjectColor === color }"
-                  :style="{ backgroundColor: color }"
-                  :title="color"
-                  @click="applyColorToSelectedObject(color)"
-                />
-              </div>
-
-              <label class="color-picker-field">
-                <span>Eigen kleur</span>
-                <input
-                  :value="selectedSceneObjectColor"
-                  type="color"
-                  class="color-picker-input"
-                  @input="applyColorToSelectedObject(($event.target).value)"
-                />
-              </label>
+        <div v-if="canEditSelectedObjectColor" class="control-group color-group">
+          <div class="control-label">Kleur</div>
+          <div class="color-row">
+            <div class="color-swatch-grid" role="group" aria-label="Kleuropties">
+              <button
+                v-for="color in objectColorPalette"
+                :key="color"
+                type="button"
+                class="color-swatch"
+                :class="{ active: selectedSceneObjectColor === color }"
+                :style="{ backgroundColor: color }"
+                :title="color"
+                @click="applyColorToSelectedObject(color)"
+              />
             </div>
+
+            <label class="color-picker-field">
+              <span>Eigen kleur</span>
+              <input
+                :value="selectedSceneObjectColor"
+                type="color"
+                class="color-picker-input"
+                @input="applyColorToSelectedObject(($event.target).value)"
+              />
+            </label>
           </div>
+        </div>
 
         <div class="selection-controls">
           <div class="control-group">
@@ -2070,91 +2510,8 @@ onBeforeUnmount(() => {
             Verwijderen
           </button>
         </div>
+
       </aside>
-
-      <!-- Room Settings Modal -->
-      <div v-if="showRoomSettingsModal" class="modal-backdrop" role="dialog" aria-modal="true">
-        <div class="modal-card">
-          <div class="modal-card-header">
-            <h3>Kamerinstellingen</h3>
-            <div style="display:flex;gap:8px">
-              <button type="button" class="modal-close-button" @click="saveRoomSettings" style="background:#6c5ce7;color:#fff;border:none">Opslaan</button>
-              <button type="button" class="modal-close-button" @click="showRoomSettingsModal = false">Sluiten ×</button>
-            </div>
-          </div>
-
-          <div class="room-settings-row">
-            <div style="display:flex;flex-direction:column;flex:1;gap:8px">
-              <div style="display:flex;align-items:center;gap:12px">
-                <div class="room-settings-label">Naam van kamer</div>
-                <input v-model="roomName" placeholder="Naam van kamer" style="flex:1;padding:8px;border-radius:8px;border:1px solid #e6e6ee" />
-              </div>
-
-              <div style="min-height:20px">
-                <div v-if="roomSettingsError" class="room-settings-error">{{ roomSettingsError }}</div>
-                <div v-if="roomSettingsSuccess" class="room-settings-success">{{ roomSettingsSuccess }}</div>
-              </div>
-
-              <div style="display:flex;align-items:center;gap:8px">
-                <div class="room-settings-label">Privacy</div>
-                <button @click="toggleRoomPrivacy" class="room-setting-pill">{{ roomPrivacy === 'private' ? 'Privé' : 'Openbaar' }}</button>
-                <button v-if="roomPrivacy === 'private'" @click="generateInviteCode" class="room-invite-button">
-                  {{ roomInviteCode ? 'Genereer opnieuw' : 'Genereer uitnodigingscode' }}
-                </button>
-              </div>
-            </div>
-          </div>
-
-          <p class="room-settings-help" v-if="roomPrivacy === 'private'">
-            Deze code wordt gebruikt om leden uit te nodigen voor deze privékamer.
-          </p>
-          <p class="room-settings-help" v-else>
-            Uitnodigingscodes zijn alleen beschikbaar voor privékamers.
-          </p>
-
-          <div v-if="roomInviteCode && roomPrivacy === 'private'" class="room-invite-code">
-            Code: <strong>{{ roomInviteCode }}</strong>
-          </div>
-
-          <hr />
-          <h4 style="margin-top:12px">Leden</h4>
-          <div style="display:flex;gap:8px;margin-top:8px;align-items:center">
-            <input v-model="inviteEmail" placeholder="naam@voorbeeld.com" style="flex:1;padding:8px;border-radius:8px;border:1px solid #e6e6ee" />
-            <select v-model="inviteRole" style="padding:8px;border-radius:8px;border:1px solid #e6e6ee">
-              <option value="editor">Bewerker</option>
-              <option value="viewer">Kijker</option>
-            </select>
-            <button @click="inviteMember" style="padding:8px 10px;border-radius:8px">Nodig uit</button>
-          </div>
-
-          <div style="max-height:160px;overflow:auto;margin-top:12px">
-            <div v-if="!roomMembers.length">Nog geen leden.</div>
-            <ul v-else style="list-style:none;padding:0;margin:0">
-              <li v-for="m in roomMembers" :key="m.id" style="display:flex;justify-content:space-between;align-items:center;padding:8px;border-bottom:1px solid #f2f2f2">
-                <div style="display:flex;flex-direction:column">
-                  <strong>{{ m.email }}</strong>
-                  <small style="color:#666">Rol: {{ m.role }} • Status: {{ m.status }}</small>
-                </div>
-                <div style="display:flex;gap:8px">
-                  <button @click="toggleBlockMember(m.id)" style="padding:6px;border-radius:8px">{{ m.status === 'blocked' ? 'Deblokkeren' : 'Blokkeren' }}</button>
-                  <button @click="removeMember(m.id)" style="padding:6px;border-radius:8px">Verwijderen</button>
-                </div>
-              </li>
-            </ul>
-          </div>
-
-          <hr />
-          <div style="margin-top:12px">
-            <h4>Gevaarlijke zone</h4>
-            <div style="font-size:13px;color:#666;margin-top:6px">Het verwijderen van de kamer verwijdert metadata en leden (alleen demo).</div>
-            <div style="margin-top:8px;display:flex;gap:8px;align-items:center">
-              <input v-model="deleteConfirmText" placeholder="Typ DELETE om te bevestigen" style="flex:1;padding:8px;border-radius:8px;border:1px solid #e6e6ee" />
-              <button @click="deleteRoom" style="padding:8px 12px;border-radius:8px;background:#ff6b6b;color:#fff;border:none">Verwijder kamer</button>
-            </div>
-          </div>
-
-        </div>
-      </div>
 
       <!-- Admin Settings Modal (placeholder) -->
       <div v-if="showAdminSettingsModal" class="modal-backdrop" role="dialog" aria-modal="true">
@@ -2209,6 +2566,11 @@ onBeforeUnmount(() => {
   margin: 18px 228px 12px;
   position: relative;
   z-index: 10010;
+  transition:
+    margin 0.28s ease,
+    padding 0.28s ease,
+    border-radius 0.28s ease,
+    box-shadow 0.28s ease;
 }
 
 .floor-toggle {
@@ -2256,6 +2618,79 @@ onBeforeUnmount(() => {
   align-items: center;
   gap: 12px;
   margin-left: 18px;
+  max-width: 520px;
+  opacity: 1;
+  transform: translateX(0);
+  overflow: hidden;
+  transition:
+    max-width 0.28s ease,
+    opacity 0.2s ease,
+    transform 0.28s ease,
+    margin-left 0.28s ease;
+}
+
+.top-bar-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-left: 18px;
+  flex: 0 0 auto;
+}
+
+.top-nav-menu-wrap {
+  position: relative;
+  display: block;
+  margin-left: 18px;
+  max-width: 0;
+  opacity: 0;
+  overflow: hidden;
+  pointer-events: none;
+  transform: translateX(-8px);
+  z-index: 10040;
+  transition:
+    max-width 0.28s ease,
+    opacity 0.2s ease,
+    transform 0.28s ease,
+    margin-left 0.28s ease;
+}
+
+.top-nav-menu-button {
+  width: 48px;
+  height: 48px;
+  border: 1px solid rgba(198, 180, 208, 0.72);
+  border-radius: 16px;
+  background: linear-gradient(180deg, rgba(252, 248, 244, 0.96), rgba(242, 236, 245, 0.96));
+  color: #4a3f67;
+  font-size: 22px;
+  font-weight: 700;
+  line-height: 1;
+  cursor: pointer;
+  position: relative;
+  z-index: 10041;
+}
+
+.top-nav-menu {
+  position: absolute;
+  top: calc(100% + 10px);
+  right: 4px;
+  left: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-width: 220px;
+  width: min(220px, calc(100vw - 24px));
+  padding: 12px;
+  border: 1px solid rgba(198, 180, 208, 0.56);
+  border-radius: 18px;
+  background: rgba(255, 252, 255, 0.98);
+  box-shadow: 0 14px 28px rgba(43, 23, 66, 0.12);
+  z-index: 10030;
+}
+
+.top-nav-menu .floor-toggle {
+  width: 100%;
+  margin: 0;
+  justify-content: center;
 }
 
 .room-title {
@@ -2269,6 +2704,14 @@ onBeforeUnmount(() => {
   overflow: hidden;
   text-overflow: ellipsis;
   margin: 0 12px;
+  max-width: 420px;
+  opacity: 1;
+  transform: translateY(0);
+  transition:
+    max-width 0.28s ease,
+    opacity 0.2s ease,
+    transform 0.28s ease,
+    margin 0.28s ease;
 }
 
 .profile-area {
@@ -2278,6 +2721,15 @@ onBeforeUnmount(() => {
   font-family: 'Outfit', 'Segoe UI', sans-serif;
   font-size: 28px;
   color: #1a1a1a;
+  max-width: 240px;
+  opacity: 1;
+  transform: translateX(0);
+  transition:
+    max-width 0.28s ease,
+    opacity 0.2s ease,
+    transform 0.28s ease,
+    margin 0.28s ease,
+    gap 0.28s ease;
 }
 
 .profile-name {
@@ -2312,6 +2764,15 @@ onBeforeUnmount(() => {
   backdrop-filter: blur(12px);
   z-index: 10020;
   pointer-events: auto;
+}
+
+.profile-menu-username {
+  display: none;
+  padding: 4px 12px 10px;
+  font-family: 'Outfit', 'Segoe UI', sans-serif;
+  font-size: 16px;
+  font-weight: 700;
+  color: #1a1a1a;
 }
 
 
@@ -2454,7 +2915,7 @@ onBeforeUnmount(() => {
   flex: 1;
   min-height: 0;
   position: relative;
-  background: #ffffff;
+  background: var(--page-bg-gradient);
   overflow: hidden;
 }
 
@@ -2474,9 +2935,9 @@ onBeforeUnmount(() => {
 .dock-button {
   width: 162px;
   height: 48px;
-  border: 1px solid rgba(238, 191, 210, 0.72);
+  border: 1px solid rgba(198, 180, 208, 0.72);
   border-radius: 16px;
-  background: rgba(255, 255, 255, 0.92);
+  background: linear-gradient(180deg, rgba(252, 248, 244, 0.96), rgba(242, 236, 245, 0.96));
   display: flex;
   flex-direction: row;
   align-items: center;
@@ -2486,9 +2947,9 @@ onBeforeUnmount(() => {
 }
 
 .dock-button.active {
-  border-color: rgba(195, 121, 166, 0.92);
-  background: rgba(244, 210, 225, 0.74);
-  box-shadow: 0 8px 16px rgba(43, 23, 66, 0.12);
+  border-color: rgba(177, 131, 168, 0.92);
+  background: linear-gradient(180deg, rgba(241, 221, 231, 0.95), rgba(228, 214, 236, 0.95));
+  box-shadow: 0 8px 16px rgba(43, 23, 66, 0.1);
 }
 
 .dock-icon {
@@ -2496,13 +2957,13 @@ onBeforeUnmount(() => {
   font-weight: 800;
   font-size: 20px;
   line-height: 1;
-  color: #3c325b;
+  color: #4a3f67;
 }
 
 .dock-label {
   font-size: 13px;
   font-weight: 700;
-  color: #4d426f;
+  color: #5b4c77;
 }
 
 .left-toolbar {
@@ -2511,6 +2972,22 @@ onBeforeUnmount(() => {
   top: 50%;
   transform: translateY(-50%);
   z-index: 26;
+}
+
+/* Accent style reused from asset dock buttons for top-nav */
+.topnav-accent-button {
+  border: 1px solid rgba(198, 180, 208, 0.72);
+  border-radius: 16px;
+  background: linear-gradient(180deg, rgba(252, 248, 244, 0.96), rgba(242, 236, 245, 0.96));
+  color: #4a3f67;
+  padding: 10px 14px;
+  margin-left: 12px;
+}
+
+.topnav-accent-button.active {
+  border-color: rgba(177, 131, 168, 0.92);
+  background: linear-gradient(180deg, rgba(241, 221, 231, 0.95), rgba(228, 214, 236, 0.95));
+  box-shadow: 0 8px 16px rgba(43, 23, 66, 0.08);
 }
 
 .left-toolbar-card {
@@ -2840,15 +3317,66 @@ onBeforeUnmount(() => {
   }
 
   .top-bar {
+    display: grid;
+    grid-template-columns: auto 1fr auto;
+    align-items: center;
+    column-gap: 12px;
     padding: 12px 16px;
+    margin: 12px 18px 10px;
+  }
+
+  .top-bar-controls {
+    max-width: 0;
+    opacity: 0;
+    transform: translateX(-10px);
+    margin-left: 0;
+    pointer-events: none;
+  }
+
+  .room-title {
+    display: none;
   }
 
   .brand-lockup {
+    grid-column: 1;
     font-size: 22px;
   }
 
+  .top-bar-actions {
+    grid-column: 3;
+    justify-self: end;
+    margin-left: 0;
+    flex: 0 0 auto;
+  }
+
+  .top-nav-menu-wrap {
+    width: 48px;
+    max-width: 48px;
+    opacity: 1;
+    transform: translateX(0);
+    pointer-events: auto;
+    margin-left: 0;
+    overflow: visible;
+  }
+
+  .top-bar-controls,
+  .room-title {
+    display: none;
+  }
+
   .profile-area {
+    margin-left: 0;
+    gap: 6px;
     font-size: 20px;
+    max-width: 120px;
+  }
+
+  .profile-name {
+    display: none;
+  }
+
+  .profile-menu-username {
+    display: block;
   }
 
   .action-dock {
