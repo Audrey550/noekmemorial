@@ -30,8 +30,8 @@
   --type-quote-size: 24px;
   --type-quote-line: 40px;
 
-  --page-bg: #f6f0e8;
-  --page-bg-gradient: #ffffff;
+  --page-bg: linear-gradient(180deg, #fbf6ef 0%, #f4edf8 48%, #e8e4f5 100%);
+  --page-bg-gradient: linear-gradient(180deg, #fbf6ef 0%, #f4edf8 48%, #e8e4f5 100%);
   --surface: rgba(255, 251, 247, 0.76);
   --surface-strong: rgba(255, 251, 247, 0.95);
   --surface-muted: rgba(255, 255, 255, 0.48);
@@ -132,7 +132,7 @@ body,
 body {
   min-height: 100vh;
   color: var(--text-primary);
-  background: var(--page-bg-gradient);
+  background: var(--page-bg);
   font-family: var(--font-body);
   line-height: 1.5;
   font-weight: 400;
@@ -443,9 +443,7 @@ h1 {
   overflow: hidden;
   position: relative;
   border-color: var(--canvas-border);
-  background:
-    radial-gradient(circle at top, rgba(255, 255, 255, 0.7), transparent 48%),
-    linear-gradient(180deg, rgba(255, 255, 255, 0.75), rgba(243, 234, 225, 0.6));
+  background: transparent;
 }
 
 .scene-canvas {
