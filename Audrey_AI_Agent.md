@@ -5,6 +5,15 @@
 - Fixed the tooltip visibility by allowing the room title area to overflow so the lock label is no longer clipped.
 - Fixed the first-admin tutorial panel sizing so the `Gebruikersrollen` step now measures its own content and keeps the continue/rewind/skip buttons inside the visible viewport.
 - Validated the tutorial panel change with a production `vite build`.
+- Updated tutorial step 1 (`Welkom`) to show no spotlight, place the textbox in the exact center, and fade in on step open.
+- Updated tutorial step 2 (`Gebruikersrollen`) so the profile dropdown opens automatically, the spotlight targets username + dropdown together, and the text panel is placed to the left of that target.
+- Pinned the profile dropdown open while the step is highlighted, and now close it only when the tutorial controls (`Vorige`, `Volgende`, `Overslaan`) are clicked.
+- Updated the roles intro copy and added a second sentence under it about where users can find settings in the dropdown.
+- Updated the next tutorial step to open and spotlight the `Beheerdersinstellingen` modal itself, with the tutorial text panel fixed at the top-left.
+- Refined that step so the tutorial panel is now on the right side, rendered in a compact height, and includes bullets explaining each `Beheerdersinstellingen` section.
+- Tightened that step further by shrinking the spotlight radius, and lowering the compact panel height to reduce the white space above the footer buttons.
+- Retargeted the spotlight from the whole admin settings modal to the `Mijn ruimtes` section inside it.
+- Retargeted the spotlight again so it now follows the `Beheerdersinstellingen` title itself.
 - Shifted the `Kamerinstellingen` discussion toward a fuller admin popup design with invite-code generation, private/public gating, and co-editor/co-admin role support.
 - Added a Dutch-only admin tutorial draft and a reusable `TutorialOverlay.vue` component scaffold for the first-time admin flow.
 - Added a `Bekijk tutorial` entry in the profile dropdown so the tutorial stays accessible from the menu instead of the navbar.
@@ -19,6 +28,15 @@
 ### Tracker Update
 - 2026-05-27: Confirming `Audrey_AI_Agent.md` was updated with the latest navbar lock, tooltip, tutorial, and room-settings work.
 - 2026-05-27: Tightened the first-admin tutorial panel sizing so the long `Gebruikersrollen` step stays fully visible and the footer buttons remain reachable.
+- 2026-05-27: Applied step-specific tutorial placement for `Welkom`: centered panel, no element highlight, and fade-in animation.
+- 2026-05-27: Applied step-specific tutorial placement for `Gebruikersrollen`: open profile menu during the step, spotlight the username/dropdown region, and position the tutorial panel left of it.
+- 2026-05-27: Locked the profile dropdown open during the highlighted `Gebruikersrollen` step and close it only via tutorial controls.
+- 2026-05-27: Rewrote the `Gebruikersrollen` intro text and added a second explanatory line about finding specific settings in the profile dropdown.
+- 2026-05-27: Switched the following tutorial step to `Open beheerdersinstellingen`, auto-opened the admin settings modal for that step, highlighted it directly, and pinned the text panel at top-left.
+- 2026-05-27: Moved the `Open beheerdersinstellingen` tutorial panel to top-right, reduced its height with compact sizing, and added explanatory bullet points for each panel area.
+- 2026-05-27: Reduced the spotlight size for the `Open beheerdersinstellingen` step and shortened the compact panel height to trim whitespace before the action buttons.
+- 2026-05-27: Shifted the `Open beheerdersinstellingen` spotlight from the whole panel to the `Mijn ruimtes` section.
+- 2026-05-27: Shifted the `Open beheerdersinstellingen` spotlight from the section area to the `Beheerdersinstellingen` title.
 - 2026-05-27: Expanded `Kamerinstellingen` into the full invite-code and co-admin flow, with privacy gating, persistent code display, and member-role management.
 - 2026-05-27: Reordered the profile dropdown so `Bekijk tutorial` sits below `Kamerinstellingen`.
 - 2026-05-27: Added the first-pass `Mijn ruimtes` switcher in account settings and wired room changes through `App.vue`/`SceneCanvas.vue`.
