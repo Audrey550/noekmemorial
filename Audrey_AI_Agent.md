@@ -1,3 +1,28 @@
+## Session Snapshot (2026-05-27)
+### Summary — Current work
+- Clarified the room privacy indicator in the navbar: it is now a non-clickable padlock next to the room name with a hover/focus tooltip that says whether the room is private or public.
+- Updated the tooltip copy to the more natural Dutch phrasing `Deze kamer is privé` / `Deze kamer is openbaar`.
+- Fixed the tooltip visibility by allowing the room title area to overflow so the lock label is no longer clipped.
+- Shifted the `Kamerinstellingen` discussion toward a fuller admin popup design with invite-code generation, private/public gating, and co-editor/co-admin role support.
+- Added a Dutch-only admin tutorial draft and a reusable `TutorialOverlay.vue` component scaffold for the first-time admin flow.
+- Added a `Bekijk tutorial` entry in the profile dropdown so the tutorial stays accessible from the menu instead of the navbar.
+- Added a working `Kamerinstellingen` modal shell in `SceneCanvas.vue` so the profile menu item opens a visible dialog.
+- Expanded the `Kamerinstellingen` modal into a full room-management UI: privacy dropdown, disabled invite-code generation while public, persistent code display, co-editor/co-admin invitation flow, member list, and a hard limit of 2 co-admins.
+- Moved the `Bekijk tutorial` item underneath `Kamerinstellingen` in the profile dropdown for cleaner menu hierarchy.
+- Added an account-settings room switcher so admins and invited collaborators can jump between accessible rooms from a shared `Mijn ruimtes` list.
+- Added an empty-state `Nieuwe kamer maken` action to the room switcher so admins can create a room directly from Beheerdersinstellingen.
+- Added a new follow-up todo to explain user roles in the tutorial round so admin/co-admin/co-editor/viewer permissions are clearer.
+- Started the first full admin tutorial pass with Dutch steps for roles, room settings, invite codes, invited members, and room switching.
+
+### Tracker Update
+- 2026-05-27: Confirming `Audrey_AI_Agent.md` was updated with the latest navbar lock, tooltip, tutorial, and room-settings work.
+- 2026-05-27: Expanded `Kamerinstellingen` into the full invite-code and co-admin flow, with privacy gating, persistent code display, and member-role management.
+- 2026-05-27: Reordered the profile dropdown so `Bekijk tutorial` sits below `Kamerinstellingen`.
+- 2026-05-27: Added the first-pass `Mijn ruimtes` switcher in account settings and wired room changes through `App.vue`/`SceneCanvas.vue`.
+- 2026-05-27: Added a room-switcher empty-state button that opens the existing create-room flow.
+- 2026-05-27: Logged a tutorial follow-up to add a dedicated user-roles explanation screen.
+- 2026-05-27: Started the admin tutorial flow with a dedicated roles explanation step and concrete room-setting targets.
+
 ## Session Snapshot (2026-05-25)
 ### Summary — Current work
 - Extended the scene placeholder generator so room furniture can render as a bookshelf, desk with lamp and computer, office chair, sofa, carpet, and a small side chair.
@@ -398,6 +423,14 @@ If you want, I can continue by wiring playback for placed audio cards, adding de
   - Vertical movement uses same `transformStep` (0.2 units) for consistent increments
 - **Testing:** Verified in browser:
   - Clicked ⬆ button 3x → photo frame visibly rose above floor
+
+## Session Snapshot (2026-05-26)
+### Summary — Today
+- Recited yesterday's todos and added them to the session tracker.
+
+### Tracker Update
+- 2026-05-26: Added today's todo list to the tracker and confirmed [Audrey_AI_Agent.md](Audrey_AI_Agent.md) updated.
+
   - Clicked ⬇ button 1x → photo frame descended slightly
   - Full vertical control achieved, no floor clipping
 - **Result:** Complete 6-directional spatial control (X, Y, Z axes) plus rotation and scale

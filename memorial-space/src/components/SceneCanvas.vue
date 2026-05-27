@@ -1,15 +1,52 @@
 <script setup>
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
-const emit = defineEmits(['logout', 'update-user', 'room-deleted'])
+const emit = defineEmits(['logout', 'update-user', 'room-deleted', 'room-selected', 'create-room'])
 import * as THREE from 'three'
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js'
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js'
 import noekLogoTextUrl from '../assets/Noek_LogoText.svg'
 import AssetPanel from './AssetPanel.vue'
+import TutorialOverlay from './TutorialOverlay.vue'
+import createAdminTutorialSteps from '../tutorials/admin-tutorials.js'
 import { logEvent } from '../lib/analytics'
 import { getSupabase } from '../lib/supabase'
 
-const props = defineProps({ currentUser: Object, roomId: { type: [String, Number], default: null } })
+const props = defineProps({
+  currentUser: Object,
+  roomId: { type: [String, Number], default: null },
+  accessibleRooms: { type: Array, default: () => [] },
+})
+
+import { onMounted as onMountedLocal } from 'vue'
+const tutorialRef = ref(null)
+const tutorialFirstRun = ref(false)
+
+const adminTutorialStorageKey = (roomId) => `audrey_admin_tutorial_shown_${roomId || 'default'}`
+
+import { computed as computedLocal } from 'vue'
+
+const adminTutorialSteps = computedLocal(() => createAdminTutorialSteps(username.value || 'Gast', effectiveRole.value))
+
+onMountedLocal(() => {
+  try {
+    const key = adminTutorialStorageKey(props.roomId)
+    const already = localStorage.getItem(key)
+    tutorialFirstRun.value = !already
+    if (!already && props.currentUser && props.currentUser.role === 'admin') {
+      // give the page a moment to render target elements
+      setTimeout(() => {
+        try { tutorialRef.value?.start() } catch (e) {}
+      }, 420)
+    }
+  } catch (e) {}
+})
+
+const handleTutorialFinish = () => {
+  try { 
+    localStorage.setItem(adminTutorialStorageKey(props.roomId), 'true') 
+  } catch (e) {}
+  try { tutorialFirstRun.value = false } catch (e) {}
+}
 
 const canvasRef = ref(null)
 const username = ref('Naam')
@@ -74,8 +111,31 @@ const visitorButtonLabel = computed(() => {
   return 'Bekijk als bezoeker'
 })
 
+const roomPrivacyLabel = computed(() => {
+  return roomPrivacy.value === 'private' ? 'Deze kamer is privé' : 'Deze kamer is openbaar'
+})
+
+const inviteRoleOptions = computed(() => {
+  const options = [
+    { value: 'co-admin', label: 'Co-admin' },
+    { value: 'editor', label: 'Co-editor' },
+  ]
+
+  if (roomPrivacy.value === 'private') {
+    options.push({ value: 'viewer', label: 'Viewer' })
+  }
+
+  return options
+})
+
+const coAdminCount = computed(() => roomMembers.value.filter((member) => member.role === 'co-admin').length)
+
 const accountSettingsLabel = computed(() => {
-  return props.currentUser?.role === 'editor' ? 'Accountinstellingen' : 'Beheerdersinstellingen'
+  return props.currentUser?.role === 'admin' ? 'Beheerdersinstellingen' : 'Accountinstellingen'
+})
+
+const roomSwitcherRooms = computed(() => {
+  return Array.isArray(props.accessibleRooms) ? props.accessibleRooms : []
 })
 
 watch(() => props.currentUser, (nu) => {
@@ -91,6 +151,12 @@ watch(() => props.roomId, () => {
 watch(roomName, () => {
   roomSettingsError.value = ''
   roomSettingsSuccess.value = ''
+})
+
+watch(roomPrivacy, (nextPrivacy) => {
+  if (nextPrivacy !== 'private' && inviteRole.value === 'viewer') {
+    inviteRole.value = 'editor'
+  }
 })
 const sceneObjects = ref([])
 const showQuickPanel = ref(false)
@@ -516,6 +582,29 @@ const normalizeHexColor = (value) => {
   }
 }
 
+const isValidHexColor = (value) => {
+  if (!value || typeof value !== 'string') return false
+  return /^#[0-9a-fA-F]{6}$/.test(value)
+}
+
+// Only persist a flat color for assets that are meant to behave like a single
+// colored object. Furniture-like models keep their own materials so they don't
+// get flattened into one dark tone on reload.
+const shouldPersistColorForAsset = (assetId) => {
+  return new Set([
+    'candle',
+    'photo-frame',
+    'flower',
+    'lamp_floor_01',
+    'lamp_table_01',
+    'lamp_hanging_01',
+    'tv_01',
+    'laptop_01',
+    'easel_01',
+    'ball_01',
+  ]).has(assetId)
+}
+
 const extractObjectColor = (object) => {
   let currentObject = object
 
@@ -592,19 +681,23 @@ const serializeSceneState = () => {
   const state = {
     version: 1,
     timestamp: new Date().toISOString(),
-    objects: sceneObjects.value.map(record => ({
-      id: record.id,
-      assetId: record.assetId,
-      position: record.position ? { x: record.position.x, y: record.position.y, z: record.position.z } : { x: 0, y: 0, z: 0 },
-      rotation: record.rotation ? { x: record.rotation.x, y: record.rotation.y, z: record.rotation.z } : { x: 0, y: 0, z: 0 },
-      scale: record.scale ? { x: record.scale.x, y: record.scale.y, z: record.scale.z } : { x: 1, y: 1, z: 1 },
-      photoData: record.photoData || null,
-      audioData: record.audioData || null,
-      videoData: record.videoData || null,
-      messageData: record.messageData || null,
-      candleData: record.candleData || null,
-      color: record.color || extractObjectColor(record.object),
-    })),
+      objects: sceneObjects.value.map(record => {
+      const rawColor = record.color || extractObjectColor(record.object)
+      const color = shouldPersistColorForAsset(record.assetId) && isValidHexColor(rawColor) ? rawColor : null
+      return {
+        id: record.id,
+        assetId: record.assetId,
+        position: record.position ? { x: record.position.x, y: record.position.y, z: record.position.z } : { x: 0, y: 0, z: 0 },
+        rotation: record.rotation ? { x: record.rotation.x, y: record.rotation.y, z: record.rotation.z } : { x: 0, y: 0, z: 0 },
+        scale: record.scale ? { x: record.scale.x, y: record.scale.y, z: record.scale.z } : { x: 1, y: 1, z: 1 },
+        photoData: record.photoData || null,
+        audioData: record.audioData || null,
+        videoData: record.videoData || null,
+        messageData: record.messageData || null,
+        candleData: record.candleData || null,
+        color,
+      }
+    }),
   }
   return JSON.stringify(state)
 }
@@ -812,15 +905,31 @@ const applyRoomTheme = (themeUpdate, persist = true) => {
 }
 
 const inviteMember = () => {
-  if (!inviteEmail.value) return alert('Geef een e-mailadres op om uit te nodigen')
+  const email = inviteEmail.value.trim()
+  if (!email) return alert('Geef een e-mailadres op om uit te nodigen')
+
+  if (inviteRole.value === 'co-admin' && coAdminCount.value >= 2) {
+    return alert('Er kunnen maximaal 2 co-admins zijn.')
+  }
+
+  if (inviteRole.value === 'viewer' && roomPrivacy.value !== 'private') {
+    return alert('Viewer-uitnodigingen kunnen alleen als de kamer privé is.')
+  }
+
   const id = `m_${Date.now()}`
-  const member = { id, email: inviteEmail.value.trim(), role: inviteRole.value || 'editor', status: 'invited' }
+  const member = { id, email, role: inviteRole.value || 'editor', status: 'invited' }
   roomMembers.value.push(member)
   saveRoomMembers()
   inviteEmail.value = ''
   inviteRole.value = 'editor'
   try { logEvent('member.invited', { memberId: member.id, role: member.role }) } catch (e) {}
   alert('Member invited (demo): ' + member.email)
+}
+
+const getMemberRoleLabel = (role) => {
+  if (role === 'co-admin') return 'Co-admin'
+  if (role === 'viewer') return 'Viewer'
+  return 'Co-editor'
 }
 
 const removeMember = (id) => {
@@ -884,14 +993,9 @@ const deserializeSceneState = async (jsonString) => {
       return false
     }
 
-    // Clear existing objects
-    sceneObjects.value.forEach(record => {
-      if (record.object && room) {
-        room.remove(record.object)
-      }
-    })
-    sceneObjects.value = []
-    clearSceneSelection()
+    // Clear existing dynamic room content so the loaded save replaces the
+    // current scene instead of stacking on top of it.
+    clearRoomContent()
 
     // Rebuild objects from state
     for (const objData of state.objects) {
@@ -936,30 +1040,38 @@ const deserializeSceneState = async (jsonString) => {
       } else if (objData.assetId && colorableAssetIds.has(objData.assetId)) {
         let model = null
 
-        if (['candle', 'photo-frame', 'flower', 'lamp_floor_01', 'lamp_table_01', 'lamp_hanging_01', 'tv_01', 'laptop_01', 'easel_01', 'ball_01', 'bookshelf_01', 'desk_01', 'desk_chair_01', 'office_chair_01', 'sofa_01', 'carpet_01', 'side_chair_01'].includes(objData.assetId)) {
-          model = createPlaceholderModel(objData.assetId)
-        } else {
-          const asset = availableAssets.find(a => a.id === objData.assetId)
-
-          try {
+        // Prefer loading the original GLB asset when available so saved scenes
+        // restore the same model/materials as when originally placed. Fall
+        // back to the procedural placeholder only if loading fails or the
+        // asset file is missing.
+        const asset = availableAssets.find(a => a.id === objData.assetId)
+        try {
             if (asset && asset.file) {
-              const gltf = await gltfLoader.loadAsync(asset.file)
-              model = gltf.scene.clone()
+              const gltf = await tryLoadGLB(asset.file)
+              if (gltf && gltf.scene) {
+                model = gltf.scene.clone()
+              } else {
+                model = createPlaceholderModel(objData.assetId)
+              }
             } else {
-              throw new Error('No asset file')
+              // No GLB provided — use placeholder
+              model = createPlaceholderModel(objData.assetId)
             }
-          } catch (error) {
-            console.log(`Creating placeholder for ${objData.assetId}`)
-            model = createPlaceholderModel(objData.assetId)
-          }
+        } catch (error) {
+          console.log(`Failed to load GLB for ${objData.assetId}, creating placeholder`, error)
+          model = createPlaceholderModel(objData.assetId)
         }
 
         model.position.set(objData.position.x, objData.position.y, objData.position.z)
         model.rotation.set(objData.rotation.x, objData.rotation.y, objData.rotation.z)
         model.scale.set(objData.scale.x, objData.scale.y, objData.scale.z)
 
-        if (objData.color) {
-          applyColorToObject(model, objData.color)
+        if (objData.color && shouldPersistColorForAsset(objData.assetId)) {
+          if (isValidHexColor(objData.color)) {
+            applyColorToObject(model, objData.color)
+          } else {
+            console.warn('Skipped applying invalid color on load:', objData.color)
+          }
         }
 
         room.add(model)
@@ -980,9 +1092,23 @@ const deserializeSceneState = async (jsonString) => {
 const saveSceneToStorage = () => {
   try {
     const serialized = serializeSceneState()
+
+    // Save a versioned history entry (keeps last N entries)
+    const historyKey = 'memorialSceneHistory'
+    let history = []
+    try { history = JSON.parse(localStorage.getItem(historyKey) || '[]') } catch (e) { history = [] }
+    const entry = { id: Date.now(), savedAt: new Date().toISOString(), label: `Versie ${history.length + 1}`, data: serialized }
+    history.unshift(entry)
+    // keep only last 10 saves to avoid uncontrolled growth
+    history = history.slice(0, 10)
+    try { localStorage.setItem(historyKey, JSON.stringify(history)) } catch (e) {}
+
+    // Also keep the legacy single-key for compatibility
     localStorage.setItem('memorialScene', serialized)
     try { logEvent('scene.saved', { objectCount: sceneObjects.value.length }) } catch (e) {}
-    alert('Scène succesvol opgeslagen!')
+    // refresh in-memory list
+    loadSavedScenes()
+    alert('Scène succesvol opgeslagen! (versie toegevoegd)')
   } catch (error) {
     console.error('Failed to save scene:', error)
     alert('Opslaan van scène is mislukt')
@@ -1009,6 +1135,84 @@ const loadSceneFromStorage = async () => {
     alert('Laden van scène is mislukt')
   }
 }
+
+// --- Versioned saves helpers ---
+const savedScenes = ref([])
+const showVersionsPanel = ref(false)
+
+const loadSavedScenes = () => {
+  try {
+    const historyKey = 'memorialSceneHistory'
+    const history = JSON.parse(localStorage.getItem(historyKey) || '[]')
+    // Sanitize legacy entries: normalize any saved color strings so they don't
+    // overwrite valid materials with invalid/HTML values. Update history in-place.
+    if (Array.isArray(history)) {
+      for (let i = 0; i < history.length; i++) {
+        try {
+          const entry = history[i]
+          const state = JSON.parse(entry.data || '{}')
+          if (state && Array.isArray(state.objects)) {
+            let changed = false
+            state.objects = state.objects.map(obj => {
+              if (obj && obj.color) {
+                if (isValidHexColor(obj.color)) {
+                  return obj
+                } else {
+                  obj.color = normalizeHexColor(obj.color)
+                  changed = true
+                  return obj
+                }
+              }
+              return obj
+            })
+            if (changed) {
+              entry.data = JSON.stringify(state)
+              history[i] = entry
+            }
+          }
+        } catch (e) {
+          // ignore malformed entry
+        }
+      }
+      try { localStorage.setItem(historyKey, JSON.stringify(history)) } catch (e) {}
+    }
+    savedScenes.value = Array.isArray(history) ? history : []
+  } catch (e) {
+    savedScenes.value = []
+  }
+}
+
+const loadSceneFromHistory = async (id) => {
+  try {
+    const historyKey = 'memorialSceneHistory'
+    const history = JSON.parse(localStorage.getItem(historyKey) || '[]')
+    const entry = (history || []).find(h => h.id === id)
+    if (!entry) return alert('Geselecteerde versie niet gevonden')
+    const success = await deserializeSceneState(entry.data)
+    if (success) {
+      alert(`Versie geladen: ${entry.savedAt}`)
+      loadSavedScenes()
+    } else {
+      alert('Laden van geselecteerde versie is mislukt')
+    }
+  } catch (e) {
+    console.error(e)
+    alert('Fout bij laden van versie')
+  }
+}
+
+const deleteSavedScene = (id) => {
+  try {
+    const historyKey = 'memorialSceneHistory'
+    let history = JSON.parse(localStorage.getItem(historyKey) || '[]')
+    history = (history || []).filter(h => h.id !== id)
+    localStorage.setItem(historyKey, JSON.stringify(history))
+    loadSavedScenes()
+  } catch (e) {}
+}
+
+// initialize saved list on component setup
+loadSavedScenes()
 
 const openQuickPanel = (panelType, modelCategory = '') => {
   if (panelSwitchTimer) {
@@ -1189,17 +1393,21 @@ const addObjectToScene = async (assetId) => {
   const asset = availableAssets.find(a => a.id === assetId)
   let model = null
 
-  try {
-    if (asset && asset.file) {
-      const gltf = await gltfLoader.loadAsync(asset.file)
-      model = gltf.scene.clone()
-    } else {
-      throw new Error('No asset file')
+    try {
+      if (asset && asset.file) {
+        const gltf = await tryLoadGLB(asset.file)
+        if (gltf && gltf.scene) {
+          model = gltf.scene.clone()
+        } else {
+          throw new Error('No valid GLB')
+        }
+      } else {
+        throw new Error('No asset file')
+      }
+    } catch (error) {
+      console.log(`Creating placeholder for ${assetId}`)
+      model = createPlaceholderModel(assetId)
     }
-  } catch (error) {
-    console.log(`Creating placeholder for ${assetId}`)
-    model = createPlaceholderModel(assetId)
-  }
 
   // Default placement in center of room
   model.position.set(Math.random() * 2 - 1, 0.5, Math.random() * 2 - 1)
@@ -1256,6 +1464,24 @@ const openRoomSettings = () => { showRoomSettingsModal.value = true; showProfile
 const openAdminSettings = () => {
   editDisplayName.value = username.value || (props.currentUser && props.currentUser.displayName) || ''
   showAdminSettingsModal.value = true
+  showProfileMenu.value = false
+}
+const openTutorial = () => {
+  try {
+    tutorialRef.value?.start()
+  } catch (e) {}
+  showProfileMenu.value = false
+}
+
+const openCreateRoom = () => {
+  emit('create-room')
+  showAdminSettingsModal.value = false
+  showProfileMenu.value = false
+}
+
+const selectRoom = (roomId) => {
+  emit('room-selected', roomId)
+  showAdminSettingsModal.value = false
   showProfileMenu.value = false
 }
 const handleLogout = async (event) => {
@@ -1938,6 +2164,61 @@ const createPlaceholderModel = (assetId) => {
   return group
 }
 
+// Try to fetch and parse a GLB safely. If the fetch fails or returns HTML/text,
+// return null so callers can fall back to placeholders without raising parse errors.
+const tryLoadGLB = async (url) => {
+  if (!url) return null
+  try {
+    const res = await fetch(url)
+    if (!res.ok) {
+      console.warn('GLB fetch failed:', url, res.status)
+      return null
+    }
+    const contentType = (res.headers.get('content-type') || '').toLowerCase()
+    // protect against HTML error pages being returned instead of GLB
+    if (contentType.includes('text/html') || contentType.includes('application/json')) {
+      console.warn('GLB fetch returned non-binary content-type:', contentType, url)
+      return null
+    }
+    const arrayBuffer = await res.arrayBuffer()
+    // Use GLTFLoader.parse to avoid the loader's internal XHR guessing that caused JSON parse errors
+    const gltf = await new Promise((resolve, reject) => {
+      gltfLoader.parse(arrayBuffer, '', (g) => resolve(g), (err) => reject(err))
+    })
+    return gltf
+  } catch (e) {
+    console.warn('Failed to fetch/parse GLB', url, e)
+    return null
+  }
+}
+
+const clearRoomContent = () => {
+  if (!room) return
+
+  clearSceneSelection()
+
+  // First remove every tracked scene object from its actual parent.
+  // This avoids layering when an object is attached to a nested group.
+  sceneObjects.value.forEach((record) => {
+    const obj = record?.object
+    if (obj?.parent) {
+      obj.parent.remove(obj)
+    }
+  })
+
+  roomDeskChair = null
+  roomDeskChairBaseRotationY = Math.PI
+
+  for (let index = room.children.length - 1; index >= 0; index -= 1) {
+    const child = room.children[index]
+    if (!child?.userData?.staticRoomElement) {
+      room.remove(child)
+    }
+  }
+
+  sceneObjects.value = []
+}
+
 const createPhotoCard = (photoData) => {
   const group = new THREE.Group()
   group.userData.photoData = photoData
@@ -2136,6 +2417,7 @@ onMounted(() => {
   worldGrid.rotation.y = Math.PI / 4
   worldGrid.material.transparent = true
   worldGrid.material.opacity = 1
+  worldGrid.userData.staticRoomElement = true
   scene.add(worldGrid)
 
   room = new THREE.Group()
@@ -2153,6 +2435,7 @@ onMounted(() => {
   )
   floorMesh.rotation.x = -Math.PI / 2
   floorMesh.receiveShadow = true
+  floorMesh.userData.staticRoomElement = true
   room.add(floorMesh)
 
   wallMaterial = new THREE.MeshStandardMaterial({
@@ -2165,11 +2448,13 @@ onMounted(() => {
   leftWall.rotation.y = Math.PI / 2
   leftWall.position.set(-4.5, 2.4, 0)
   leftWall.receiveShadow = true
+  leftWall.userData.staticRoomElement = true
   room.add(leftWall)
 
   const backWall = new THREE.Mesh(new THREE.PlaneGeometry(9, 4.8), wallMaterial)
   backWall.position.set(0, 2.4, -4.5)
   backWall.receiveShadow = true
+  backWall.userData.staticRoomElement = true
   room.add(backWall)
 
   trimMaterial = new THREE.MeshStandardMaterial({
@@ -2179,10 +2464,12 @@ onMounted(() => {
 
   const leftTrim = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.2, 8.7), trimMaterial)
   leftTrim.position.set(-4.4, 0.1, 0)
+  leftTrim.userData.staticRoomElement = true
   room.add(leftTrim)
 
   const backTrim = new THREE.Mesh(new THREE.BoxGeometry(8.7, 0.2, 0.2), trimMaterial)
   backTrim.position.set(0, 0.1, -4.4)
+  backTrim.userData.staticRoomElement = true
   room.add(backTrim)
 
   const rug = new THREE.Mesh(
@@ -2194,6 +2481,7 @@ onMounted(() => {
   )
   rug.rotation.x = -Math.PI / 2
   rug.position.set(0.2, 0.03, 0.9)
+  rug.userData.staticRoomElement = true
   room.add(rug)
 
   const createSofaGroup = (width, depth, accentColor) => {
@@ -2666,7 +2954,20 @@ onBeforeUnmount(() => {
         </button>
       </div>
 
-      <div class="room-title">{{ roomName || 'Onbekende kamer' }}</div>
+      <div class="room-title">
+        <span
+          class="room-privacy-indicator"
+          tabindex="0"
+          role="img"
+          :aria-label="roomPrivacyLabel"
+        >
+          <span class="room-privacy-icon" aria-hidden="true">
+            {{ roomPrivacy === 'private' ? '🔒' : '🔓' }}
+          </span>
+          <span class="room-privacy-tooltip" aria-hidden="true">{{ roomPrivacyLabel }}</span>
+        </span>
+        <span class="room-title-text">{{ roomName || 'Onbekende kamer' }}</span>
+      </div>
 
       <div class="top-bar-actions">
         <div ref="topNavMenuElement" class="top-nav-menu-wrap">
@@ -2731,16 +3032,22 @@ onBeforeUnmount(() => {
               <div v-if="showProfileMenu" class="profile-menu" role="menu">
                 <div class="profile-menu-username">{{ username }}</div>
                 <template v-if="props.currentUser && props.currentUser.role === 'admin'">
-                  <button type="button" class="profile-menu-item" role="menuitem" @click="openAdminSettings">
+                  <button id="profile-menu-admin-settings" type="button" class="profile-menu-item" role="menuitem" @click="openAdminSettings">
                     {{ accountSettingsLabel }}
                   </button>
-                  <button type="button" class="profile-menu-item" role="menuitem" @click="openRoomSettings">
+                  <button id="profile-menu-room-settings" type="button" class="profile-menu-item" role="menuitem" @click="openRoomSettings">
                     Kamerinstellingen
+                  </button>
+                  <button id="profile-menu-tutorial" type="button" class="profile-menu-item" role="menuitem" @click="openTutorial">
+                    Bekijk tutorial
                   </button>
                 </template>
                 <template v-else>
-                  <button type="button" class="profile-menu-item" role="menuitem" @click="openAdminSettings">
+                  <button id="profile-menu-account-settings" type="button" class="profile-menu-item" role="menuitem" @click="openAdminSettings">
                     {{ accountSettingsLabel }}
+                  </button>
+                  <button id="profile-menu-tutorial" type="button" class="profile-menu-item" role="menuitem" @click="openTutorial">
+                    Bekijk tutorial
                   </button>
                 </template>
                 <button type="button" class="profile-menu-item" role="menuitem" @click="handleLogout($event)" @mousedown.stop.prevent="handleLogout($event)" tabindex="0">
@@ -2824,6 +3131,32 @@ onBeforeUnmount(() => {
           <span class="dock-icon">📂</span>
           <span class="dock-label">Laden</span>
         </button>
+        <button
+          v-if="effectiveRole === 'admin'"
+          type="button"
+          class="storage-dock-button"
+          title="Bekijk opgeslagen versies"
+          @click="showVersionsPanel = !showVersionsPanel"
+        >
+          <span class="dock-icon">🕘</span>
+          <span class="dock-label">Versies</span>
+        </button>
+
+        <div v-if="showVersionsPanel && effectiveRole === 'admin'" class="versions-panel">
+          <div v-if="!savedScenes.length" class="versions-empty">Geen versies opgeslagen</div>
+          <ul v-else class="versions-list">
+            <li v-for="entry in savedScenes" :key="entry.id" class="version-item">
+              <div class="version-meta">
+                <div class="version-label">{{ entry.label }}</div>
+                <div class="version-date">{{ new Date(entry.savedAt).toLocaleString() }}</div>
+              </div>
+              <div class="version-actions">
+                <button type="button" @click="loadSceneFromHistory(entry.id)">Laad</button>
+                <button type="button" @click="deleteSavedScene(entry.id)">Verwijder</button>
+              </div>
+            </li>
+          </ul>
+        </div>
       </nav>
 
       <div
@@ -2945,6 +3278,108 @@ onBeforeUnmount(() => {
 
       </aside>
 
+      <!-- Room Settings Modal -->
+      <div v-if="showRoomSettingsModal" class="modal-backdrop" role="dialog" aria-modal="true">
+        <div class="modal-card room-settings-modal-card">
+          <div class="modal-card-header">
+            <h3>Kamerinstellingen</h3>
+            <button type="button" class="modal-close-button" @click="showRoomSettingsModal = false">×</button>
+          </div>
+
+          <p class="room-settings-help">
+            Houd de kamer privé als je een invite-code wilt genereren. De code blijft bestaan als je de kamer later openbaar maakt.
+          </p>
+
+          <div class="room-settings-row room-settings-grid">
+            <div class="room-settings-field">
+              <label class="room-settings-label" for="room-name-input">Kamer naam</label>
+              <input id="room-name-input" v-model="roomName" class="room-settings-input" />
+            </div>
+
+            <div class="room-settings-field">
+              <label class="room-settings-label" for="room-privacy-select">Privacy</label>
+              <select id="room-privacy-select" v-model="roomPrivacy" class="room-settings-select">
+                <option value="private">Privé</option>
+                <option value="public">Openbaar</option>
+              </select>
+            </div>
+
+            <div class="room-settings-field room-settings-code-field">
+              <label class="room-settings-label">Invite-code</label>
+              <button
+                id="room-code-button"
+                type="button"
+                class="room-invite-button room-code-button"
+                :disabled="roomPrivacy !== 'private'"
+                @click="generateInviteCode"
+              >
+                Code genereren
+              </button>
+              <div v-if="roomPrivacy !== 'private'" class="room-settings-help">
+                Je kunt alleen een code genereren als de kamer privé is.
+              </div>
+              <div v-if="roomInviteCode" class="room-invite-code">
+                Huidige code: <strong>{{ roomInviteCode }}</strong>
+              </div>
+              <div v-else class="room-settings-help">
+                Nog geen code gegenereerd voor deze kamer.
+              </div>
+            </div>
+          </div>
+
+          <div class="room-settings-section">
+            <div class="room-settings-label">Co-editors en co-admins uitnodigen</div>
+            <p class="room-settings-help">
+              Voeg mensen toe en kies hun rol. Je kunt maximaal 2 co-admins toevoegen.
+            </p>
+
+            <div id="room-invite-row" class="room-settings-row room-invite-form">
+              <input
+                id="room-invite-email-input"
+                v-model="inviteEmail"
+                class="room-settings-input room-invite-email-input"
+                type="email"
+                placeholder="E-mailadres"
+              />
+
+              <select id="room-invite-role-select" v-model="inviteRole" class="room-settings-select room-invite-role-select">
+                <option v-for="option in inviteRoleOptions" :key="option.value" :value="option.value">
+                  {{ option.label }}
+                </option>
+              </select>
+
+              <button type="button" class="room-invite-button" @click="inviteMember">Uitnodigen</button>
+            </div>
+
+            <div v-if="inviteRole === 'co-admin' && coAdminCount >= 2" class="room-settings-help room-settings-warning">
+              Maximaal 2 co-admins toegestaan.
+            </div>
+            <div v-if="roomPrivacy !== 'private' && inviteRole === 'viewer'" class="room-settings-help">
+              Viewer-uitnodigingen zijn alleen beschikbaar als de kamer privé is.
+            </div>
+
+            <div class="room-members-list">
+              <div v-if="!roomMembers.length" class="room-members-empty">Nog geen leden toegevoegd.</div>
+              <div v-for="member in roomMembers" :key="member.id" class="room-member-row">
+                <div class="room-member-meta">
+                  <div class="room-member-email">{{ member.email }}</div>
+                  <div class="room-member-role">{{ getMemberRoleLabel(member.role) }} · {{ member.status }}</div>
+                </div>
+                <button type="button" class="room-member-remove-button" @click="removeMember(member.id)">Verwijderen</button>
+              </div>
+            </div>
+          </div>
+
+          <div v-if="roomSettingsError" class="room-settings-error">{{ roomSettingsError }}</div>
+          <div v-if="roomSettingsSuccess" class="room-settings-success">{{ roomSettingsSuccess }}</div>
+
+          <div class="room-settings-actions">
+            <button type="button" @click="showRoomSettingsModal = false" class="room-settings-secondary-button">Annuleren</button>
+            <button id="room-settings-save" type="button" @click="saveRoomSettings" class="room-settings-primary-button">Opslaan</button>
+          </div>
+        </div>
+      </div>
+
       <!-- Admin Settings Modal (placeholder) -->
       <div v-if="showAdminSettingsModal" class="modal-backdrop" role="dialog" aria-modal="true">
         <div class="modal-card">
@@ -2964,12 +3399,47 @@ onBeforeUnmount(() => {
             <input v-model="editDisplayName" style="width:100%;padding:8px;border-radius:8px;border:1px solid #e6e6ee;margin-top:6px" />
           </div>
 
+          <div v-if="props.currentUser && props.currentUser.role === 'admin'" class="room-settings-section">
+            <div class="room-settings-label">Mijn ruimtes</div>
+            <p class="room-settings-help">Hier zie je de ruimtes waartoe je toegang hebt.</p>
+
+            <div id="room-switcher-list" v-if="roomSwitcherRooms.length" class="room-switcher-list">
+              <div v-for="room in roomSwitcherRooms" :key="room.id" class="room-switcher-row" :class="{ active: room.id === props.roomId }">
+                <div class="room-switcher-meta">
+                  <div class="room-switcher-name">{{ room.name }}</div>
+                  <div class="room-switcher-subtitle">
+                    <span>{{ room.role === 'admin' ? 'Admin' : room.role === 'co-admin' ? 'Co-admin' : room.role === 'viewer' ? 'Viewer' : 'Co-editor' }}</span>
+                    <span>·</span>
+                    <span>{{ room.privacy === 'private' ? 'Privé' : 'Openbaar' }}</span>
+                    <span v-if="room.id === props.roomId">· Huidige ruimte</span>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  class="room-switcher-button"
+                  :disabled="room.id === props.roomId"
+                  @click="selectRoom(room.id)"
+                >
+                  {{ room.id === props.roomId ? 'Geopend' : 'Openen' }}
+                </button>
+              </div>
+            </div>
+
+            <div v-else class="room-members-empty">
+              <div>Nog geen andere ruimtes gevonden.</div>
+              <button type="button" class="room-switcher-button room-switcher-empty-button" @click="openCreateRoom">
+                Nieuwe kamer maken
+              </button>
+            </div>
+          </div>
+
           <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:18px">
             <button @click="showAdminSettingsModal = false" style="padding:8px 12px;border-radius:8px">Annuleren</button>
             <button @click="saveAdminSettings" style="padding:8px 12px;border-radius:8px;background:#6c5ce7;color:#fff;border:none">Opslaan</button>
           </div>
         </div>
       </div>
+      <TutorialOverlay ref="tutorialRef" :steps="adminTutorialSteps" :first-run="tutorialFirstRun" @finish="handleTutorialFinish" />
     </section>
   </main>
 </template>
@@ -3120,13 +3590,14 @@ onBeforeUnmount(() => {
 
 .room-title {
   flex: 1 1 auto;
-  text-align: center;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   font-weight: 700;
   font-size: 16px;
   color: #1a1a1a;
-  pointer-events: none;
+  overflow: visible;
   white-space: nowrap;
-  overflow: hidden;
   text-overflow: ellipsis;
   margin: 0 12px;
   max-width: 420px;
@@ -3137,6 +3608,67 @@ onBeforeUnmount(() => {
     opacity 0.2s ease,
     transform 0.28s ease,
     margin 0.28s ease;
+}
+
+.room-title-text {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.room-privacy-indicator {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  margin-right: 8px;
+  flex: 0 0 auto;
+  border-radius: 999px;
+  cursor: default;
+  outline: none;
+}
+
+.room-privacy-indicator:focus-visible .room-privacy-icon,
+.room-privacy-indicator:hover .room-privacy-icon {
+  background: rgba(108, 92, 231, 0.12);
+  box-shadow: 0 0 0 4px rgba(108, 92, 231, 0.08);
+}
+
+.room-privacy-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 999px;
+  font-size: 16px;
+  line-height: 1;
+  transition: background 0.15s ease, box-shadow 0.15s ease;
+}
+
+.room-privacy-tooltip {
+  position: absolute;
+  left: 50%;
+  top: calc(100% + 8px);
+  transform: translateX(-50%);
+  padding: 6px 10px;
+  border-radius: 999px;
+  background: rgba(20, 20, 24, 0.96);
+  color: #fff;
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.15s ease, transform 0.15s ease;
+  transform-origin: top center;
+  z-index: 2;
+}
+
+.room-privacy-indicator:hover .room-privacy-tooltip,
+.room-privacy-indicator:focus-visible .room-privacy-tooltip {
+  opacity: 1;
+  transform: translateX(-50%) translateY(0);
 }
 
 .profile-area {
@@ -3237,12 +3769,17 @@ onBeforeUnmount(() => {
 }
 
 .modal-card {
-  width: 520px;
+  width: min(760px, calc(100vw - 48px));
   background: #fff;
   border-radius: 12px;
   padding: 20px;
   box-shadow: 0 18px 40px rgba(0,0,0,0.18);
   position: relative;
+}
+
+.room-settings-modal-card {
+  max-height: min(90vh, 860px);
+  overflow: auto;
 }
 
 .modal-card-header {
@@ -3273,6 +3810,219 @@ onBeforeUnmount(() => {
   flex-wrap: wrap;
   gap: 10px;
   margin: 14px 0 8px;
+}
+
+.room-settings-grid {
+  align-items: flex-start;
+  gap: 16px;
+}
+
+.room-settings-field {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  flex: 1 1 180px;
+  min-width: 180px;
+}
+
+.room-settings-code-field {
+  flex-basis: 240px;
+}
+
+.room-settings-input,
+.room-settings-select {
+  width: 100%;
+  padding: 11px 12px;
+  border-radius: 10px;
+  border: 1px solid #dcdde4;
+  background: #fff;
+  color: #1a1a1a;
+  font-family: 'Outfit', 'Segoe UI', sans-serif;
+  font-size: 15px;
+}
+
+.room-settings-select:focus,
+.room-settings-input:focus {
+  outline: 2px solid rgba(108, 92, 231, 0.18);
+  outline-offset: 1px;
+}
+
+.room-settings-section {
+  margin-top: 18px;
+  padding-top: 16px;
+  border-top: 1px solid #ececf2;
+}
+
+.room-switcher-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 10px;
+}
+
+.room-switcher-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 12px 14px;
+  border: 1px solid #e9e9f2;
+  border-radius: 12px;
+  background: #fafafe;
+}
+
+.room-switcher-row.active {
+  border-color: rgba(108, 92, 231, 0.26);
+  background: rgba(108, 92, 231, 0.06);
+}
+
+.room-switcher-meta {
+  min-width: 0;
+}
+
+.room-switcher-name {
+  font-weight: 700;
+  color: #1a1a1a;
+  word-break: break-word;
+}
+
+.room-switcher-subtitle {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 4px;
+  font-size: 13px;
+  color: #666;
+}
+
+.room-switcher-button {
+  flex: 0 0 auto;
+  border: none;
+  border-radius: 10px;
+  background: #6c5ce7;
+  color: #fff;
+  font-family: 'Outfit', 'Segoe UI', sans-serif;
+  font-size: 14px;
+  font-weight: 700;
+  padding: 9px 12px;
+}
+
+.room-switcher-button:disabled {
+  background: #d9d9ea;
+  color: #666;
+  cursor: default;
+}
+
+.room-invite-form {
+  align-items: flex-start;
+}
+
+.room-invite-email-input {
+  flex: 1 1 260px;
+}
+
+.room-invite-role-select {
+  flex: 0 0 180px;
+}
+
+.room-code-button[disabled] {
+  opacity: 0.48;
+  cursor: not-allowed;
+}
+
+.room-members-list {
+  margin-top: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.room-members-empty {
+  padding: 12px 14px;
+  border-radius: 12px;
+  background: #f7f7fb;
+  color: #666;
+  font-size: 14px;
+}
+
+.room-switcher-empty-button {
+  margin-top: 10px;
+  background: #6c5ce7;
+}
+
+.room-member-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 12px 14px;
+  border-radius: 12px;
+  border: 1px solid #ececf2;
+  background: #fff;
+}
+
+.room-member-meta {
+  min-width: 0;
+}
+
+.room-member-email {
+  font-weight: 600;
+  color: #1a1a1a;
+  word-break: break-word;
+}
+
+.room-member-role {
+  margin-top: 4px;
+  font-size: 13px;
+  color: #666;
+}
+
+.room-member-remove-button {
+  flex: 0 0 auto;
+  border: 1px solid #dfdfea;
+  border-radius: 10px;
+  background: #fff;
+  color: #333;
+  font-family: 'Outfit', 'Segoe UI', sans-serif;
+  font-size: 14px;
+  font-weight: 600;
+  padding: 9px 12px;
+}
+
+.room-member-remove-button:hover {
+  background: #f8f8fc;
+}
+
+.room-settings-warning {
+  color: #a86500;
+}
+
+.room-settings-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-top: 20px;
+}
+
+.room-settings-secondary-button,
+.room-settings-primary-button {
+  padding: 10px 14px;
+  border-radius: 10px;
+  font-family: 'Outfit', 'Segoe UI', sans-serif;
+  font-size: 15px;
+  font-weight: 700;
+}
+
+.room-settings-secondary-button {
+  border: 1px solid #cfcfe0;
+  background: #fff;
+  color: #222;
+}
+
+.room-settings-primary-button {
+  border: none;
+  background: #6c5ce7;
+  color: #fff;
 }
 
 .room-settings-label {
