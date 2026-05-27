@@ -46,6 +46,8 @@ const handleTutorialFinish = () => {
     localStorage.setItem(adminTutorialStorageKey(props.roomId), 'true') 
   } catch (e) {}
   try { tutorialFirstRun.value = false } catch (e) {}
+  tutorialProfileMenuPinned.value = false
+  showProfileMenu.value = false
 }
 
 const canvasRef = ref(null)
@@ -72,6 +74,7 @@ const showAdminSettingsModal = ref(false)
 const editDisplayName = ref('')
 const visitorPreviewMode = ref(false)
 const showTopNavMenu = ref(false)
+const tutorialProfileMenuPinned = ref(false)
 
 // initialize username from current user when available
 if (props.currentUser && props.currentUser.displayName) {
@@ -1473,6 +1476,49 @@ const openTutorial = () => {
   showProfileMenu.value = false
 }
 
+const handleTutorialStepChange = (payload) => {
+  const step = payload?.step
+  if (!step) return
+
+  tutorialProfileMenuPinned.value = !!step.pinProfileMenuOpen
+
+  if (step.openAdminSettingsModal) {
+    showAdminSettingsModal.value = true
+    showRoomSettingsModal.value = false
+    showProfileMenu.value = false
+  }
+
+  if (step.openRoomSettingsModal) {
+    showRoomSettingsModal.value = true
+    showAdminSettingsModal.value = false
+    showProfileMenu.value = false
+  } else {
+    showRoomSettingsModal.value = false
+  }
+
+  if (step.closeAdminSettingsModal) {
+    showAdminSettingsModal.value = false
+  }
+
+  if (step.closeRoomSettingsModal) {
+    showRoomSettingsModal.value = false
+  }
+
+  if (step.openProfileMenu) {
+    showProfileMenu.value = true
+    return
+  }
+
+  if (step.closeProfileMenu) {
+    showProfileMenu.value = false
+  }
+}
+
+const handleTutorialControlAction = () => {
+  tutorialProfileMenuPinned.value = false
+  showProfileMenu.value = false
+}
+
 const openCreateRoom = () => {
   emit('create-room')
   showAdminSettingsModal.value = false
@@ -1535,7 +1581,7 @@ const handleDocumentClick = (event) => {
   const clickedProfileMenu = profileMenuElement.value && profileMenuElement.value.contains(event.target)
   const clickedTopNavMenu = topNavMenuElement.value && topNavMenuElement.value.contains(event.target)
 
-  if (showProfileMenu.value && !clickedProfileMenu) {
+  if (showProfileMenu.value && !clickedProfileMenu && !tutorialProfileMenuPinned.value) {
     closeProfileMenu()
   }
 
@@ -1546,7 +1592,9 @@ const handleDocumentClick = (event) => {
 
 const handleDocumentKeydown = (event) => {
   if (event.key === 'Escape') {
-    closeProfileMenu()
+    if (!tutorialProfileMenuPinned.value) {
+      closeProfileMenu()
+    }
     closeTopNavMenu()
   }
 }
@@ -3066,7 +3114,7 @@ onBeforeUnmount(() => {
       <canvas ref="canvasRef" class="scene-canvas" aria-label="3D herdenkingsruimte"></canvas>
 
       <aside v-if="effectiveRole !== 'viewer'" class="left-toolbar vertical-center" aria-label="Acties en scènebeheer">
-        <div class="left-toolbar-card">
+        <div id="asset-panel" class="left-toolbar-card">
           <h3 class="left-toolbar-title">Assets</h3>
 
           <nav class="action-dock column" aria-label="Snelle acties">
@@ -3091,28 +3139,29 @@ onBeforeUnmount(() => {
         </div>
       </aside>
 
-      <AssetPanel
-        v-if="showQuickPanel && effectiveRole !== 'viewer'"
-        :show-floor="showFloor"
-        :panel-type="activePanel"
-        :current-room-theme="roomTheme"
-        :room-themes="roomThemePresets"
-        :initial-model-category="quickPanelModelCategory"
-        :current-sound-settings="soundSettings"
-        :is-admin="effectiveRole === 'admin'"
-        @add-asset="handleAddAsset"
-        @apply-room-theme="handleApplyRoomTheme"
-        @apply-sound="handleApplySound"
-        @toggle-floor="toggleFloorVisibility"
-        @close-panel="closeQuickPanel"
-        @place-photo="handlePlacePhoto"
-        @place-audio="handlePlaceAudio"
-        @place-video="handlePlaceVideo"
-        @place-message="handlePlaceMessage"
-        @place-candle="handlePlaceCandle"
-      />
+      <div id="quick-asset-panel" v-if="showQuickPanel && effectiveRole !== 'viewer'">
+        <AssetPanel
+          :show-floor="showFloor"
+          :panel-type="activePanel"
+          :current-room-theme="roomTheme"
+          :room-themes="roomThemePresets"
+          :initial-model-category="quickPanelModelCategory"
+          :current-sound-settings="soundSettings"
+          :is-admin="effectiveRole === 'admin'"
+          @add-asset="handleAddAsset"
+          @apply-room-theme="handleApplyRoomTheme"
+          @apply-sound="handleApplySound"
+          @toggle-floor="toggleFloorVisibility"
+          @close-panel="closeQuickPanel"
+          @place-photo="handlePlacePhoto"
+          @place-audio="handlePlaceAudio"
+          @place-video="handlePlaceVideo"
+          @place-message="handlePlaceMessage"
+          @place-candle="handlePlaceCandle"
+        />
+      </div>
 
-      <nav v-if="effectiveRole !== 'viewer'" class="scene-storage-dock" aria-label="Scène opslag acties">
+      <nav id="scene-storage-dock" v-if="effectiveRole !== 'viewer'" class="scene-storage-dock" aria-label="Scène opslag acties">
         <button
           type="button"
           class="storage-dock-button"
@@ -3280,7 +3329,7 @@ onBeforeUnmount(() => {
 
       <!-- Room Settings Modal -->
       <div v-if="showRoomSettingsModal" class="modal-backdrop" role="dialog" aria-modal="true">
-        <div class="modal-card room-settings-modal-card">
+        <div id="room-settings-modal-card" class="modal-card room-settings-modal-card">
           <div class="modal-card-header">
             <h3>Kamerinstellingen</h3>
             <button type="button" class="modal-close-button" @click="showRoomSettingsModal = false">×</button>
@@ -3382,8 +3431,8 @@ onBeforeUnmount(() => {
 
       <!-- Admin Settings Modal (placeholder) -->
       <div v-if="showAdminSettingsModal" class="modal-backdrop" role="dialog" aria-modal="true">
-        <div class="modal-card">
-          <h3>Beheerdersinstellingen</h3>
+        <div id="admin-settings-modal-card" class="modal-card">
+          <h3 id="admin-settings-modal-title">Beheerdersinstellingen</h3>
           <div style="display:flex;align-items:center;gap:12px;margin-top:12px">
             <div style="width:56px;height:56px;border-radius:28px;overflow:hidden;background:#ddd">
               <img v-if="props.currentUser && props.currentUser.avatar" :src="props.currentUser.avatar" style="width:100%;height:100%;object-fit:cover" />
@@ -3399,7 +3448,7 @@ onBeforeUnmount(() => {
             <input v-model="editDisplayName" style="width:100%;padding:8px;border-radius:8px;border:1px solid #e6e6ee;margin-top:6px" />
           </div>
 
-          <div v-if="props.currentUser && props.currentUser.role === 'admin'" class="room-settings-section">
+          <div v-if="props.currentUser && props.currentUser.role === 'admin'" id="admin-settings-my-rooms-section" class="room-settings-section">
             <div class="room-settings-label">Mijn ruimtes</div>
             <p class="room-settings-help">Hier zie je de ruimtes waartoe je toegang hebt.</p>
 
@@ -3439,7 +3488,14 @@ onBeforeUnmount(() => {
           </div>
         </div>
       </div>
-      <TutorialOverlay ref="tutorialRef" :steps="adminTutorialSteps" :first-run="tutorialFirstRun" @finish="handleTutorialFinish" />
+      <TutorialOverlay
+        ref="tutorialRef"
+        :steps="adminTutorialSteps"
+        :first-run="tutorialFirstRun"
+        @step-change="handleTutorialStepChange"
+        @control-action="handleTutorialControlAction"
+        @finish="handleTutorialFinish"
+      />
     </section>
   </main>
 </template>
