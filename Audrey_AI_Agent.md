@@ -3,6 +3,8 @@
 - Clarified the room privacy indicator in the navbar: it is now a non-clickable padlock next to the room name with a hover/focus tooltip that says whether the room is private or public.
 - Updated the tooltip copy to the more natural Dutch phrasing `Deze kamer is privé` / `Deze kamer is openbaar`.
 - Fixed the tooltip visibility by allowing the room title area to overflow so the lock label is no longer clipped.
+- Fixed the first-admin tutorial panel sizing so the `Gebruikersrollen` step now measures its own content and keeps the continue/rewind/skip buttons inside the visible viewport.
+- Validated the tutorial panel change with a production `vite build`.
 - Shifted the `Kamerinstellingen` discussion toward a fuller admin popup design with invite-code generation, private/public gating, and co-editor/co-admin role support.
 - Added a Dutch-only admin tutorial draft and a reusable `TutorialOverlay.vue` component scaffold for the first-time admin flow.
 - Added a `Bekijk tutorial` entry in the profile dropdown so the tutorial stays accessible from the menu instead of the navbar.
@@ -16,6 +18,7 @@
 
 ### Tracker Update
 - 2026-05-27: Confirming `Audrey_AI_Agent.md` was updated with the latest navbar lock, tooltip, tutorial, and room-settings work.
+- 2026-05-27: Tightened the first-admin tutorial panel sizing so the long `Gebruikersrollen` step stays fully visible and the footer buttons remain reachable.
 - 2026-05-27: Expanded `Kamerinstellingen` into the full invite-code and co-admin flow, with privacy gating, persistent code display, and member-role management.
 - 2026-05-27: Reordered the profile dropdown so `Bekijk tutorial` sits below `Kamerinstellingen`.
 - 2026-05-27: Added the first-pass `Mijn ruimtes` switcher in account settings and wired room changes through `App.vue`/`SceneCanvas.vue`.
