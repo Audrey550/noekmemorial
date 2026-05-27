@@ -10,6 +10,7 @@ import { getSupabase } from './lib/supabase'
 
 const authUser = ref(null)
 const adminRooms = ref([])
+const accessibleRooms = ref([])
 const selectedRoomId = ref(null)
 const showRoomList = ref(false)
 const revealed = ref({})
@@ -56,6 +57,65 @@ const getRoomMeta = (roomId) => {
     const raw = localStorage.getItem(`audreyRoom_${roomId}`)
     return raw ? JSON.parse(raw) : {}
   } catch (e) { return {} }
+}
+
+const refreshAccessibleRooms = (user = authUser.value) => {
+  if (!user || !user.email) {
+    accessibleRooms.value = []
+    return
+  }
+
+  const roomsById = new Map()
+
+  if (user.role === 'admin') {
+    adminRooms.value.forEach((room) => {
+      roomsById.set(room.id, {
+        id: room.id,
+        name: room.name,
+        privacy: room.privacy || 'private',
+        role: 'admin',
+        createdByMe: true,
+      })
+    })
+  }
+
+  try {
+    const keys = Object.keys(localStorage)
+    keys
+      .filter((key) => key.startsWith('audreyRoomMembers_'))
+      .forEach((key) => {
+        const roomId = key.replace('audreyRoomMembers_', '')
+        const raw = localStorage.getItem(key)
+        if (!raw) return
+
+        let members = []
+        try {
+          members = JSON.parse(raw)
+        } catch (e) {
+          members = []
+        }
+
+        const member = members.find((entry) => entry.email === user.email)
+        if (!member) return
+
+        const meta = getRoomMeta(roomId)
+        roomsById.set(roomId, {
+          id: roomId,
+          name: meta.name || `Kamer ${roomId}`,
+          privacy: meta.privacy || 'private',
+          role: member.role || 'editor',
+          createdByMe: !!member.createdByMe,
+        })
+      })
+  } catch (e) {}
+
+  accessibleRooms.value = Array.from(roomsById.values())
+}
+
+const handleRoomSelected = (roomId) => {
+  selectedRoomId.value = roomId
+  showRoomList.value = false
+  refreshAccessibleRooms()
 }
 
 // invite handlers
@@ -172,6 +232,8 @@ onMounted(() => {
       } catch (e) {}
     }
   } catch (e) {}
+
+  refreshAccessibleRooms(authUser.value)
 })
 
 const handleLogin = (user) => {
@@ -204,11 +266,14 @@ const handleLogin = (user) => {
       showRoomList.value = false
     }
   }
+
+  refreshAccessibleRooms(user)
 }
 
 const logout = () => {
   authUser.value = null
   try { localStorage.removeItem('audreyUser') } catch (e) {}
+  accessibleRooms.value = []
 }
 
 const createRoom = () => {
@@ -244,6 +309,7 @@ const createRoomConfirmed = () => {
   selectedRoomId.value = id
   showRoomList.value = false
   showCreateRoomModal.value = false
+  refreshAccessibleRooms()
   // reset modal state
   newRoomName.value = ''
   newRoomPrivacy.value = 'private'
@@ -263,11 +329,13 @@ const removeRoom = (id) => {
   const key = `audreyRooms_${email}`
   adminRooms.value = adminRooms.value.filter(r => r.id !== id)
   try { localStorage.setItem(key, JSON.stringify(adminRooms.value)) } catch (e) {}
+  refreshAccessibleRooms()
 }
 
 const openRoom = (id) => {
   selectedRoomId.value = id
   showRoomList.value = false
+  refreshAccessibleRooms()
 }
 
 const openFirst = () => {
@@ -275,6 +343,7 @@ const openFirst = () => {
     // open the most recently added/edited room (last in array)
     selectedRoomId.value = adminRooms.value[adminRooms.value.length - 1].id
     showRoomList.value = false
+    refreshAccessibleRooms()
   }
 }
 
@@ -298,6 +367,7 @@ const handleRoomUpdated = ({ id, name }) => {
   if (changed) {
     try { localStorage.setItem(key, JSON.stringify(adminRooms.value)) } catch (e) {}
   }
+  refreshAccessibleRooms()
 }
 </script>
 
@@ -476,7 +546,18 @@ const handleRoomUpdated = ({ id, name }) => {
           <InviteLoading v-else-if="inviteStep === 4" :roomName="getRoomMeta(selectedRoomId).name || ''" @finished="handleFinished" />
         </div>
 
-        <SceneCanvas v-else :currentUser="authUser" :roomId="selectedRoomId" @logout="logout" @update-user="updateUser" @room-deleted="removeRoom" @room-updated="handleRoomUpdated" />
+        <SceneCanvas
+          v-else
+          :currentUser="authUser"
+          :roomId="selectedRoomId"
+          :accessibleRooms="accessibleRooms"
+          @logout="logout"
+          @update-user="updateUser"
+          @room-deleted="removeRoom"
+          @room-updated="handleRoomUpdated"
+          @room-selected="handleRoomSelected"
+          @create-room="createRoom"
+        />
       </div>
     </div>
   </div>
