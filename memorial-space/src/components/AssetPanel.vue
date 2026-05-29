@@ -930,6 +930,7 @@ const placeCandle = () => {
           </div>
         </div>
       </div>
+
     </div>
 
     <div v-else-if="panelType === 'sound'" class="sound-panel">
