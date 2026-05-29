@@ -64,6 +64,7 @@ const roomTheme = ref({
   floorMaterialIndex: 0,
   useTextures: true,
 })
+const roomEmpty = ref(false)
 const roomSettingsError = ref('')
 const roomSettingsSuccess = ref('')
 const roomMembers = ref([])
@@ -242,6 +243,13 @@ const rotateStep = Math.PI / 12
 const scaleStep = 0.1
 const assetModels = ref([])
 const hideDeleteHint = ref(false)
+const undoStack = ref([])
+const redoStack = ref([])
+const canUndo = computed(() => undoStack.value.length > 0)
+const canRedo = computed(() => redoStack.value.length > 0)
+const isApplyingHistory = ref(false)
+const maxUndoSteps = 40
+const showResetRoomModal = ref(false)
 const canEditSceneObjects = computed(() => effectiveRole.value === 'admin' || effectiveRole.value === 'editor')
 // Initialize from localStorage if available
 try {
@@ -719,9 +727,11 @@ const applyColorToSelectedObject = (colorValue) => {
     return
   }
 
+  pushUndoSnapshot()
   const normalizedColor = applyColorToObject(record.object, colorValue)
   record.color = normalizedColor
   selectedSceneObjectColor.value = normalizedColor
+  persistCurrentRoomScene()
 }
 
 // Available models for the asset panel
@@ -766,6 +776,103 @@ const serializeSceneState = () => {
   return JSON.stringify(state)
 }
 
+const getRoomSceneStorageKey = () => `audreyRoomScene_${props.roomId || 'default'}`
+
+const persistCurrentRoomScene = (serializedState = null) => {
+  try {
+    const payload = serializedState || serializeSceneState()
+    localStorage.setItem(getRoomSceneStorageKey(), payload)
+  } catch (e) {}
+}
+
+const pushUndoSnapshot = () => {
+  if (!room || isApplyingHistory.value) return
+  try {
+    const snapshot = serializeSceneState()
+    const previous = undoStack.value[undoStack.value.length - 1]
+    if (previous === snapshot) return
+    undoStack.value.push(snapshot)
+    if (undoStack.value.length > maxUndoSteps) {
+      undoStack.value.shift()
+    }
+    redoStack.value = []
+  } catch (e) {}
+}
+
+const undoSceneChange = async () => {
+  if (!undoStack.value.length || isApplyingHistory.value) return
+  const previousSnapshot = undoStack.value.pop()
+  if (!previousSnapshot) return
+
+  try {
+    const currentSnapshot = serializeSceneState()
+    redoStack.value.push(currentSnapshot)
+    isApplyingHistory.value = true
+    const success = await deserializeSceneState(previousSnapshot)
+    if (success) {
+      persistCurrentRoomScene(previousSnapshot)
+      showNotification('Eén stap terug', 'info', 1800)
+    }
+  } catch (e) {
+    console.error('Undo failed', e)
+  } finally {
+    isApplyingHistory.value = false
+  }
+}
+
+const redoSceneChange = async () => {
+  if (!redoStack.value.length || isApplyingHistory.value) return
+  const nextSnapshot = redoStack.value.pop()
+  if (!nextSnapshot) return
+
+  try {
+    const currentSnapshot = serializeSceneState()
+    undoStack.value.push(currentSnapshot)
+    isApplyingHistory.value = true
+    const success = await deserializeSceneState(nextSnapshot)
+    if (success) {
+      persistCurrentRoomScene(nextSnapshot)
+      showNotification('Eén stap vooruit', 'info', 1800)
+    }
+  } catch (e) {
+    console.error('Redo failed', e)
+  } finally {
+    isApplyingHistory.value = false
+  }
+}
+
+const openResetRoomConfirm = () => {
+  if (!canEditSceneObjects.value) return
+  showResetRoomModal.value = true
+}
+
+const cancelResetRoom = () => {
+  showResetRoomModal.value = false
+}
+
+const confirmResetRoom = () => {
+  if (!canEditSceneObjects.value) return
+  showResetRoomModal.value = false
+
+  pushUndoSnapshot()
+  clearRoomContent()
+
+  // Ensure the room keeps a neutral look: no textures and neutral grey tones.
+  roomTheme.value = normalizeRoomThemeState({
+    ...roomTheme.value,
+    useTextures: false,
+    useColor: false,
+  })
+  applyRoomTheme(roomTheme.value)
+
+  roomEmpty.value = true
+  saveRoomMeta()
+
+  const emptyScene = JSON.stringify({ version: 1, timestamp: new Date().toISOString(), objects: [] })
+  persistCurrentRoomScene(emptyScene)
+  showNotification('Kamer is gereset', 'success', 2600)
+}
+
 // Load/save basic room metadata (privacy & invite code) in localStorage for demo
 const loadRoomMeta = () => {
   const id = props.roomId || 'default'
@@ -777,17 +884,21 @@ const loadRoomMeta = () => {
       roomInviteCode.value = data.inviteCode || null
       roomName.value = data.name || ''
       roomTheme.value = normalizeRoomThemeState(data.theme || roomTheme.value)
+      // if the room was created as an intentionally empty room, persist that flag
+      roomEmpty.value = !!data.emptyRoom
     } else {
       roomPrivacy.value = 'private'
       roomInviteCode.value = null
       roomName.value = ''
       roomTheme.value = normalizeRoomThemeState('soft-pink')
+      roomEmpty.value = false
     }
   } catch (e) {
     roomPrivacy.value = 'private'
     roomInviteCode.value = null
     roomName.value = ''
     roomTheme.value = normalizeRoomThemeState('soft-pink')
+    roomEmpty.value = false
   }
 
   // load members
@@ -804,7 +915,7 @@ const loadRoomMeta = () => {
 const saveRoomMeta = () => {
   const id = props.roomId || 'default'
   try {
-    localStorage.setItem(`audreyRoom_${id}`, JSON.stringify({ privacy: roomPrivacy.value, inviteCode: roomInviteCode.value, name: roomName.value, theme: roomTheme.value }))
+    localStorage.setItem(`audreyRoom_${id}`, JSON.stringify({ privacy: roomPrivacy.value, inviteCode: roomInviteCode.value, name: roomName.value, theme: roomTheme.value, emptyRoom: roomEmpty.value }))
   } catch (e) {}
   try {
     localStorage.setItem(`audreyRoomMembers_${id}`, JSON.stringify(roomMembers.value))
@@ -1000,7 +1111,9 @@ const toggleBlockMember = (id) => {
 }
 
 const handleApplyRoomTheme = (themeUpdate) => {
+  pushUndoSnapshot()
   applyRoomTheme(themeUpdate)
+  persistCurrentRoomScene()
 }
 
 const handleApplySound = async (soundUpdate) => {
@@ -1176,6 +1289,7 @@ const saveSceneToStorage = () => {
 
     // Also keep the legacy single-key for compatibility
     localStorage.setItem('memorialScene', serialized)
+    persistCurrentRoomScene(serialized)
     try { logEvent('scene.saved', { objectCount: sceneObjects.value.length }) } catch (e) {}
     // refresh in-memory list
     loadSavedScenes()
@@ -1389,7 +1503,9 @@ const handlePlacePhoto = (photoData) => {
     return
   }
 
+  pushUndoSnapshot()
   placePhotoInRoom(photoData)
+  persistCurrentRoomScene()
 }
 
 const handlePlaceAudio = (audioData) => {
@@ -1398,7 +1514,9 @@ const handlePlaceAudio = (audioData) => {
     alert('Gebruikers met alleen-weergave kunnen geen objecten toevoegen (demo).')
     return
   }
+  pushUndoSnapshot()
   placeAudioInRoom(audioData)
+  persistCurrentRoomScene()
 }
 
 const handlePlaceVideo = (videoData) => {
@@ -1407,7 +1525,9 @@ const handlePlaceVideo = (videoData) => {
     alert('Gebruikers met alleen-weergave kunnen geen objecten toevoegen (demo).')
     return
   }
+  pushUndoSnapshot()
   placeVideoInRoom(videoData)
+  persistCurrentRoomScene()
 }
 
 const createSceneObjectRecord = (object, assetId, payload = {}, options = {}) => {
@@ -1583,7 +1703,10 @@ const addObjectToScene = async (assetId) => {
 const handleAddAsset = (asset) => {
   if (!asset) return
   const id = asset.id || asset
-  addObjectToScene(id)
+  pushUndoSnapshot()
+  addObjectToScene(id).then(() => {
+    persistCurrentRoomScene()
+  }).catch(() => {})
   closeQuickPanel()
 }
 
@@ -1747,6 +1870,10 @@ const handleDocumentClick = (event) => {
 
 const handleDocumentKeydown = (event) => {
   if (event.key === 'Escape') {
+    if (showResetRoomModal.value) {
+      showResetRoomModal.value = false
+      return
+    }
     if (!tutorialProfileMenuPinned.value) {
       closeProfileMenu()
     }
@@ -1766,6 +1893,18 @@ const handleWindowKeydown = (event) => {
 
   const key = (event.key || '').toLowerCase()
   if (!canEditSceneObjects.value) {
+    return
+  }
+
+  if ((event.ctrlKey || event.metaKey) && key === 'z' && !event.shiftKey) {
+    try { event.preventDefault() } catch (e) {}
+    undoSceneChange()
+    return
+  }
+
+  if ((event.ctrlKey || event.metaKey) && (key === 'y' || (key === 'z' && event.shiftKey))) {
+    try { event.preventDefault() } catch (e) {}
+    redoSceneChange()
     return
   }
 
@@ -1869,6 +2008,8 @@ const removeSelectedSceneObject = () => {
     return
   }
 
+  pushUndoSnapshot()
+
   if (record.object === roomDeskChair) {
     roomDeskChair = null
   }
@@ -1896,6 +2037,7 @@ const removeSelectedSceneObject = () => {
   sceneObjects.value = sceneObjects.value.filter(entry => entry.id !== record.id)
   clearHoveredPhoto()
   clearSceneSelection()
+  persistCurrentRoomScene()
 }
 
 const applyTransformToSelectedObject = ({ moveX = 0, moveY = 0, moveZ = 0, rotateY = 0, scaleAdjust = 0 }) => {
@@ -1904,6 +2046,8 @@ const applyTransformToSelectedObject = ({ moveX = 0, moveY = 0, moveZ = 0, rotat
   if (!canEditSceneObjects.value || !record?.object) {
     return
   }
+
+  pushUndoSnapshot()
 
   record.object.position.x += moveX
   record.object.position.y += moveY
@@ -1924,6 +2068,7 @@ const applyTransformToSelectedObject = ({ moveX = 0, moveY = 0, moveZ = 0, rotat
   record.position = record.object.position.clone()
   record.rotation = record.object.rotation.clone()
   record.scale = record.object.scale.clone()
+  persistCurrentRoomScene()
 }
 
 const getPhotoDataFromObject = (object) => {
@@ -2506,18 +2651,23 @@ const handlePlaceMessage = (messageData) => {
     return
   }
 
+  pushUndoSnapshot()
+
   // Create a simple placeholder for the message in the room
   const messageGroup = new THREE.Group()
   messageGroup.position.set(0, 0.5, 0)
   room.add(messageGroup)
 
   createSceneObjectRecord(messageGroup, 'message', { messageData })
+  persistCurrentRoomScene()
 }
 
 const handlePlaceCandle = (candleData) => {
   if (!room) {
     return
   }
+
+  pushUndoSnapshot()
 
   // Create a simple candle placeholder based on size
   const candleGroup = new THREE.Group()
@@ -2563,6 +2713,7 @@ const handlePlaceCandle = (candleData) => {
   room.add(candleGroup)
 
   createSceneObjectRecord(candleGroup, 'candle', { candleData })
+  persistCurrentRoomScene()
 }
 
 onMounted(() => {
@@ -3022,6 +3173,34 @@ onMounted(() => {
 
   applyRoomTheme(roomTheme.value, false)
 
+  // If this room was created as an "empty" room, keep only the room shell
+  // and remove all dynamic content/furniture from the scene.
+  if (roomEmpty.value) {
+    try {
+      clearRoomContent()
+    } catch (e) {}
+  }
+
+  // Load a per-room saved scene if present (created by room creation flow).
+  ;(async () => {
+    try {
+      const id = props.roomId || 'default'
+      const perRoomKey = `audreyRoomScene_${id}`
+      const stored = localStorage.getItem(perRoomKey)
+      if (stored) {
+        if (stored.trim()) {
+          const success = await deserializeSceneState(stored)
+          if (!success) console.warn('Failed to deserialize per-room scene for', id)
+        } else {
+          // empty storage — ensure nothing dynamic remains
+          clearRoomContent()
+        }
+      }
+    } catch (e) {
+      // ignore per-room load errors
+    }
+  })()
+
   const keyLight = new THREE.DirectionalLight('#fff5fb', 1.6)
   keyLight.position.set(8, 14, 9)
   keyLight.castShadow = true
@@ -3145,7 +3324,7 @@ onBeforeUnmount(() => {
 
         <div
           v-if="props.currentUser && props.currentUser.role === 'admin'"
-          ref="adminViewMenuElement"
+            @click="openResetRoomConfirm"
           class="mode-menu-wrap"
         >
           <button
@@ -3414,6 +3593,16 @@ onBeforeUnmount(() => {
             </button>
           </nav>
 
+          <button
+            v-if="effectiveRole === 'admin'"
+            type="button"
+            class="asset-reset-button"
+            title="Reset deze kamer"
+            @click="openResetRoomConfirm"
+          >
+            Kamer resetten
+          </button>
+
         </div>
       </aside>
 
@@ -3439,7 +3628,49 @@ onBeforeUnmount(() => {
         />
       </div>
 
+      <div v-if="showResetRoomModal" class="modal-backdrop reset-room-backdrop" role="dialog" aria-modal="true" @click.self="cancelResetRoom">
+        <div class="modal-card reset-room-modal-card">
+          <div class="modal-card-header">
+            <h3>Kamer resetten</h3>
+            <button type="button" class="modal-close-button reset-room-close-button" @click="cancelResetRoom">×</button>
+          </div>
+
+          <p class="reset-room-warning">
+            Dit zal alle voortgang ongedaan maken
+          </p>
+
+          <div class="reset-room-preview">
+            Alle geplaatste objecten worden verwijderd en de ruimte keert terug naar een lege, neutrale basis.
+          </div>
+
+          <div class="room-settings-actions reset-room-actions">
+            <button type="button" class="room-settings-secondary-button" @click="cancelResetRoom">Annuleren</button>
+            <button type="button" class="reset-room-primary-button" @click="confirmResetRoom">Reset</button>
+          </div>
+        </div>
+      </div>
+
       <nav id="scene-storage-dock" v-if="effectiveRole !== 'viewer'" class="scene-storage-dock" aria-label="Scène opslag acties">
+        <button
+          type="button"
+          class="storage-dock-button"
+          title="Eén stap terug"
+          :disabled="!canUndo"
+          @click="undoSceneChange"
+        >
+          <span class="dock-icon">↶</span>
+          <span class="dock-label">Terug</span>
+        </button>
+        <button
+          type="button"
+          class="storage-dock-button"
+          title="Eén stap vooruit"
+          :disabled="!canRedo"
+          @click="redoSceneChange"
+        >
+          <span class="dock-icon">↷</span>
+          <span class="dock-label">Vooruit</span>
+        </button>
         <button
           type="button"
           class="storage-dock-button"
@@ -4101,6 +4332,63 @@ onBeforeUnmount(() => {
   position: relative;
 }
 
+.reset-room-backdrop {
+  background: rgba(72, 20, 20, 0.42);
+}
+
+.reset-room-modal-card {
+  width: min(520px, calc(100vw - 48px));
+  background: linear-gradient(180deg, #fff6f6 0%, #fff1f1 100%);
+  border: 1px solid rgba(208, 116, 116, 0.28);
+}
+
+.reset-room-modal-card .modal-card-header h3 {
+  color: #8b2d2d;
+}
+
+.reset-room-close-button {
+  background: rgba(255, 224, 224, 0.95);
+  color: #8b2d2d;
+}
+
+.reset-room-warning {
+  margin: 16px 0 10px;
+  padding-left: 0;
+  color: #6e1f1f;
+  font-size: 16px;
+  font-weight: 700;
+  line-height: 1.45;
+}
+
+.reset-room-preview {
+  padding: 14px 16px;
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.7);
+  border: 1px solid rgba(208, 116, 116, 0.18);
+  color: #6f4a4a;
+  font-size: 14px;
+  line-height: 1.45;
+}
+
+.reset-room-actions {
+  margin-top: 18px;
+}
+
+.reset-room-primary-button {
+  padding: 10px 14px;
+  border-radius: 10px;
+  border: 1px solid rgba(181, 72, 72, 0.42);
+  background: linear-gradient(180deg, #ffd9d9 0%, #ffbcbc 100%);
+  color: #7f2222;
+  font-family: 'Outfit', 'Segoe UI', sans-serif;
+  font-size: 15px;
+  font-weight: 800;
+}
+
+.reset-room-primary-button:hover {
+  background: linear-gradient(180deg, #ffe2e2 0%, #ffb2b2 100%);
+}
+
 .room-settings-modal-card {
   max-height: min(90vh, 860px);
   overflow: auto;
@@ -4451,6 +4739,27 @@ onBeforeUnmount(() => {
   box-shadow: 0 8px 16px rgba(43, 23, 66, 0.1);
 }
 
+.asset-reset-button {
+  margin-top: 12px;
+  width: 162px;
+  border: 1px solid rgba(208, 116, 116, 0.52);
+  border-radius: 14px;
+  background: linear-gradient(180deg, rgba(255, 235, 235, 0.98), rgba(255, 218, 218, 0.96));
+  color: #8b2d2d;
+  font-family: 'Outfit', 'Segoe UI', sans-serif;
+  font-size: 14px;
+  font-weight: 700;
+  line-height: 1;
+  padding: 12px 10px;
+  cursor: pointer;
+  transition: background 0.2s ease, transform 0.2s ease;
+}
+
+.asset-reset-button:hover {
+  background: linear-gradient(180deg, rgba(255, 226, 226, 0.99), rgba(255, 206, 206, 0.98));
+  transform: translateY(-1px);
+}
+
 .dock-icon {
   font-family: 'Trebuchet MS', 'Segoe UI', sans-serif;
   font-weight: 800;
@@ -4603,6 +4912,11 @@ onBeforeUnmount(() => {
 
 .storage-dock-button:hover {
   background: rgba(233, 224, 248, 0.98);
+}
+
+.storage-dock-button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
 }
 
 
