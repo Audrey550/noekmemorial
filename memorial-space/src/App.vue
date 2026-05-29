@@ -298,13 +298,24 @@ const createRoomConfirmed = () => {
   const key = `audreyRooms_${email}`
   const id = `room_${Date.now()}`
   const roomName = newRoomName.value && newRoomName.value.trim().length ? newRoomName.value.trim() : `Kamer ${adminRooms.value.length + 1}`
+  // Create room meta with an explicit empty-room flag so the editor can
+  // initialize an empty scene (no wallpaper, default grey floor, no objects).
   const room = { id, name: roomName, privacy: newRoomPrivacy.value }
   adminRooms.value.push(room)
   try { localStorage.setItem(key, JSON.stringify(adminRooms.value)) } catch (e) {}
   // persist room meta (privacy, inviteCode, name)
   try {
     const meta = { privacy: newRoomPrivacy.value, inviteCode: newRoomInviteCode.value || null, name: roomName }
+    // Mark this new room as intentionally empty by default so admins get
+    // an empty canvas when they create it.
+    meta.emptyRoom = true
+    // Provide a default theme that disables textures/colors (results in
+    // neutral grey surfaces) so there is no wallpaper or floor texture.
+    meta.theme = { presetId: 'soft-pink', useTextures: false, useColor: false }
     localStorage.setItem(`audreyRoom_${id}`, JSON.stringify(meta))
+    // Also initialize an explicit per-room scene entry (empty objects array)
+    const emptyScene = { version: 1, timestamp: new Date().toISOString(), objects: [] }
+    try { localStorage.setItem(`audreyRoomScene_${id}`, JSON.stringify(emptyScene)) } catch (e) {}
   } catch (e) {}
   selectedRoomId.value = id
   showRoomList.value = false
