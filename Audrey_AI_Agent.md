@@ -1,3 +1,18 @@
+## Session Snapshot (2026-05-29)
+### Summary — Current work
+- Added an admin-only `Kamer resetten` action in the Assets panel (`Ruimte` section).
+- Wired reset confirmation with the exact Dutch alert text: `Ben je zeker dat je de kamer wilt resetten? Dit zal alle voortgang ongedaan maken`.
+- Reset now clears all placed/dynamic objects and forces a neutral room look (no wallpaper/floor textures, grey fallback colors).
+- Added one-step back / one-step forward controls in the scene storage dock.
+- Added keyboard shortcuts for history navigation: `Ctrl+Z` (undo), `Ctrl+Y` and `Ctrl+Shift+Z` (redo).
+- Added per-room scene persistence key (`audreyRoomScene_<roomId>`) so room state and reset behavior stay scoped to the selected room.
+- Kept the empty-room behavior aligned with user intent: room shell remains visible, but object content is cleared.
+
+### Tracker Update
+- 2026-05-29: Added `Kamer resetten` in Assets, with Dutch destructive confirmation and empty-room reset behavior.
+- 2026-05-29: Added undo/redo buttons in the editor dock and wired keyboard undo/redo shortcuts.
+- 2026-05-29: Updated room metadata persistence to include `emptyRoom` and per-room scene snapshots.
+
 ## Session Snapshot (2026-05-27)
 ### Summary — Current work
 - Clarified the room privacy indicator in the navbar: it is now a non-clickable padlock next to the room name with a hover/focus tooltip that says whether the room is private or public.
