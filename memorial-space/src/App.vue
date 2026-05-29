@@ -309,8 +309,9 @@ const createRoomConfirmed = () => {
     // Mark this new room as intentionally empty by default so admins get
     // an empty canvas when they create it.
     meta.emptyRoom = true
-    // Provide a default theme that disables textures/colors (results in
-    // neutral grey surfaces) so there is no wallpaper or floor texture.
+    // Provide a default theme that disables textures/colors so the room
+    // starts empty with neutral white/grey surfaces (no wallpaper or
+    // floor texture). This is intentional for newly created rooms.
     meta.theme = { presetId: 'soft-pink', useTextures: false, useColor: false }
     localStorage.setItem(`audreyRoom_${id}`, JSON.stringify(meta))
     // Also initialize an explicit per-room scene entry (empty objects array)
