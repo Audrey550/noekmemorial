@@ -1,7 +1,7 @@
 const formatRoleLine = (role) => {
   if (!role) return 'Je bent ingelogd.'
   if (role === 'admin') return 'Je bent ingelogd als beheerder.'
-  if (role === 'co-admin') return 'Je bent ingelogd als co-admin.'
+  // co-admin role removed; fall through to other role labels
   if (role === 'editor' || role === 'co-editor') return 'Je bent ingelogd als co-editor.'
   return 'Je hebt kijkrechten (viewer).'
 }
@@ -28,17 +28,10 @@ export default function createAdminTutorialSteps(name = 'Gast', role = '') {
           items: [
             'Creeert de kamer(s) en is hoofdbeheerder',
             'Kan objecten plaatsen en bewerken',
-            'Kan een kamercode genereren om andere mensen uit te nodigen, en deze instellen als co-admin of co-editor',
+            'Kan een kamercode genereren om andere mensen uit te nodigen en deze instellen als co-editor',
           ],
         },
-        {
-          title: 'Co-admin',
-          items: [
-            'Helpt mee met het beheren van de kamer',
-            'Kan instellingen en uitnodigingen mee opvolgen',
-            'Kan niet de hoofdbeheerder vervangen',
-          ],
-        },
+        // co-admin role removed from tutorial
         {
           title: 'Co-editor',
           items: [
@@ -92,7 +85,7 @@ export default function createAdminTutorialSteps(name = 'Gast', role = '') {
             'Mijn ruimtes: open, wissel of maak kamers.',
             'Deel de kamersleutel: genereer en kopieer een uitnodigingscode.',
             'Nodig iemand uit: voeg e-mail en rol toe.',
-            'Kies een rol: bepaal permissies (admin/co-admin/co-editor/viewer).',
+            'Kies een rol: bepaal permissies (admin/co-editor/viewer).',
             'Opslaan: sla je wijzigingen op of annuleer.',
           ],
         },
@@ -120,8 +113,8 @@ export default function createAdminTutorialSteps(name = 'Gast', role = '') {
       showSpotlight: true,
     },
     {
-      title: 'Opslaan & laden',
-      text: 'Gebruik Opslaan om wijzigingen te bewaren en Laden/Opnieuw te beginnen.',
+      title: 'Opslaan & Versies',
+      text: 'Gebruik Opslaan om wijzigingen te bewaren en Versies om eerdere versies te herstellen of te verwijderen.',
       selectors: ['#scene-storage-dock .storage-dock-button:nth-child(1)', '#scene-storage-dock .storage-dock-button:nth-child(2)'],
       panelPlacement: 'top-of-target',
       panelMinHeight: 180,
