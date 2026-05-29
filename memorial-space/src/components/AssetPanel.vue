@@ -92,6 +92,13 @@ const candleSizes = [
   { id: 'large', label: 'Groot', size: 'L' },
 ]
 
+const mediaActionButtons = [
+  { id: 'photo', label: 'Foto', icon: '🖼️' },
+  { id: 'audio', label: 'Audio', icon: '🎧' },
+  { id: 'video', label: 'Video', icon: '🎥' },
+  { id: 'candle', label: 'Kaars', icon: '🕯️' },
+]
+
 const panelTitle = {
   room: 'Ruimte',
   sound: 'Geluid',
@@ -201,13 +208,13 @@ const getRoomThemeRowSelection = (row) => row.find(theme => theme.id === selecte
 const selectedRoomThemeState = computed(() => props.currentRoomTheme || { presetId: 'soft-pink', wallShadeIndex: 2, floorShadeIndex: 2, wallMaterialIndex: 0, floorMaterialIndex: 0 })
 
 const applyUseTextures = (enabled) => {
-  if (!selectedRoomThemeId.value) {
-    // apply to current preset even if not explicitly selected
-    emit('apply-room-theme', { presetId: selectedRoomThemeState.value?.presetId || 'soft-pink', useTextures: enabled })
-    return
-  }
+  const basePreset = selectedRoomThemeId.value || selectedRoomThemeState.value?.presetId || 'soft-pink'
+  const payload = { presetId: basePreset, useTextures: enabled }
+  // When textures are turned off, ensure color mode is enabled so the
+  // room shows the selected shade instead of a neutral white/grey surface.
+  if (enabled === false) payload.useColor = true
 
-  emit('apply-room-theme', { presetId: selectedRoomThemeId.value, useTextures: enabled })
+  emit('apply-room-theme', payload)
 }
 
 const applyUseColor = (enabled) => {
@@ -419,6 +426,7 @@ const panelHeading = computed(() => {
   if (mediaMode.value === 'photo-source' || mediaMode.value === 'photo-details') return 'Media - Foto'
   if (mediaMode.value === 'audio-source' || mediaMode.value === 'audio-details') return 'Media - Audio'
   if (mediaMode.value === 'video-source' || mediaMode.value === 'video-details') return 'Media - Video'
+  if (mediaMode.value === 'candle-source' || mediaMode.value === 'candle-details') return 'Media - Kaars'
   if (mediaMode.value === 'coming-soon') return 'Binnenkort'
 
   return panelTitle.media
@@ -439,6 +447,10 @@ const panelCopy = computed(() => {
 
   if (mediaMode.value === 'video-source') {
     return 'Upload een videobestand, plak een URL of neem een korte opname met je camera.'
+  }
+
+  if (mediaMode.value === 'candle-source') {
+    return 'Kies een kaars, vul daarna je naam en boodschap in, en plaats deze in de ruimte.'
   }
 
   if (mediaMode.value === 'photo-details') {
@@ -491,6 +503,11 @@ const openMediaOption = (optionId) => {
 
   if (optionId === 'video') {
     mediaMode.value = 'video-source'
+    return
+  }
+
+  if (optionId === 'candle') {
+    mediaMode.value = 'candle-source'
     return
   }
 
@@ -974,17 +991,24 @@ const placeCandle = () => {
       </section>
     </div>
 
-    <div v-else-if="panelType === 'media' && mediaMode === 'chooser'" class="asset-grid media-chooser-grid">
-      <button
-        v-for="option in [{ id: 'photo', label: 'Foto', icon: '🖼️' }, { id: 'audio', label: 'Audio', icon: '🎧' }, { id: 'video', label: 'Video', icon: '🎥' }]"
-        :key="option.id"
-        type="button"
-        class="asset-item media-option-item"
-        @click="openMediaOption(option.id)"
-      >
-        <span class="asset-icon">{{ option.icon }}</span>
-        <span class="asset-name">{{ option.label }}</span>
+    <div v-else-if="panelType === 'media' && mediaMode === 'chooser'" class="media-panel-stack">
+      <button type="button" class="asset-item media-main-button" @click="mediaMode = 'chooser'">
+        <span class="asset-icon">🖼️</span>
+        <span class="asset-name">Media</span>
       </button>
+
+      <div class="asset-grid media-chooser-grid media-secondary-list">
+        <button
+          v-for="option in mediaActionButtons"
+          :key="option.id"
+          type="button"
+          class="asset-item media-option-item"
+          @click="openMediaOption(option.id)"
+        >
+          <span class="asset-icon">{{ option.icon }}</span>
+          <span class="asset-name">{{ option.label }}</span>
+        </button>
+      </div>
     </div>
 
     <div v-else-if="panelType === 'models'" class="models-panel models-left-only">
@@ -1310,7 +1334,7 @@ const placeCandle = () => {
       <section class="photo-card-shell">
         <div class="photo-flow-title">
           <h3>Schrijf je bericht</h3>
-          <p>Laai hieronder een mooie boodschap achter.</p>
+          <p>Laat hieronder een mooie boodschap achter.</p>
         </div>
 
         <label class="photo-field">
@@ -1324,14 +1348,14 @@ const placeCandle = () => {
       </section>
     </div>
 
-    <div v-else-if="panelType === 'family' && familyMode === 'chooser'" class="candle-flow">
+    <div v-else-if="panelType === 'media' && familyMode === 'chooser'" class="candle-flow">
       <section class="photo-card-shell">
         <div class="photo-flow-title">
-          <h3>Brand een kaars</h3>
-          <p>Kies een kaars, vul daarna je naam in en plaats deze waar je maar wilt in de herdenkingsruimte.</p>
+          <h3>Kaars met boodschap</h3>
+          <p>Kies een kaars, vul daarna je naam en boodschap in en plaats deze in de ruimte.</p>
         </div>
 
-        <p class="photo-flow-copy">Selecteer een kaars om te branden:</p>
+        <p class="photo-flow-copy">Selecteer een kaars om te plaatsen:</p>
 
         <div class="candle-size-grid">
           <button
@@ -1353,7 +1377,7 @@ const placeCandle = () => {
       </section>
     </div>
 
-    <div v-else-if="panelType === 'family' && familyMode === 'details'" class="candle-flow">
+    <div v-else-if="panelType === 'media' && familyMode === 'details'" class="candle-flow">
       <button type="button" class="back-link" @click="backToCandleChooser">← terug</button>
 
       <section class="photo-card-shell photo-details-shell">
@@ -1717,6 +1741,37 @@ const placeCandle = () => {
 
 .media-chooser-grid {
   padding-top: 16px;
+}
+
+.media-panel-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 14px 18px 18px;
+  flex: 1;
+  overflow-y: auto;
+}
+
+.media-main-button {
+  width: 100%;
+  min-height: 64px;
+}
+
+.media-secondary-list {
+  padding: 0;
+  gap: 8px;
+}
+
+.media-secondary-list .media-option-item {
+  width: 100%;
+  padding: 12px 14px;
+  min-height: 54px;
+}
+
+.media-secondary-list .media-option-item .asset-icon {
+  width: 34px;
+  height: 34px;
+  font-size: 20px;
 }
 
 .room-theme-panel {
