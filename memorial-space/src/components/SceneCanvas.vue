@@ -120,7 +120,6 @@ const roomPrivacyLabel = computed(() => {
 
 const inviteRoleOptions = computed(() => {
   const options = [
-    { value: 'co-admin', label: 'Co-admin' },
     { value: 'editor', label: 'Co-editor' },
   ]
 
@@ -130,8 +129,6 @@ const inviteRoleOptions = computed(() => {
 
   return options
 })
-
-const coAdminCount = computed(() => roomMembers.value.filter((member) => member.role === 'co-admin').length)
 
 const accountSettingsLabel = computed(() => {
   return props.currentUser?.role === 'admin' ? 'Beheerdersinstellingen' : 'Accountinstellingen'
@@ -911,10 +908,6 @@ const inviteMember = () => {
   const email = inviteEmail.value.trim()
   if (!email) return alert('Geef een e-mailadres op om uit te nodigen')
 
-  if (inviteRole.value === 'co-admin' && coAdminCount.value >= 2) {
-    return alert('Er kunnen maximaal 2 co-admins zijn.')
-  }
-
   if (inviteRole.value === 'viewer' && roomPrivacy.value !== 'private') {
     return alert('Viewer-uitnodigingen kunnen alleen als de kamer privé is.')
   }
@@ -930,8 +923,8 @@ const inviteMember = () => {
 }
 
 const getMemberRoleLabel = (role) => {
-  if (role === 'co-admin') return 'Co-admin'
   if (role === 'viewer') return 'Viewer'
+  if (role === 'admin') return 'Admin'
   return 'Co-editor'
 }
 
@@ -1111,10 +1104,10 @@ const saveSceneToStorage = () => {
     try { logEvent('scene.saved', { objectCount: sceneObjects.value.length }) } catch (e) {}
     // refresh in-memory list
     loadSavedScenes()
-    alert('Scène succesvol opgeslagen! (versie toegevoegd)')
+    showNotification('Scène succesvol opgeslagen!', 'success', 8000, '(versie toegevoegd)')
   } catch (error) {
     console.error('Failed to save scene:', error)
-    alert('Opslaan van scène is mislukt')
+    showNotification('Opslaan van scène is mislukt', 'error')
   }
 }
 
@@ -1123,15 +1116,15 @@ const loadSceneFromStorage = async () => {
   try {
     const stored = localStorage.getItem('memorialScene')
     if (!stored) {
-      alert('Geen opgeslagen scène gevonden')
+      showNotification('Geen opgeslagen scène gevonden', 'info')
       return
     }
     const success = await deserializeSceneState(stored)
     if (success) {
       try { logEvent('scene.loaded', { objectCount: sceneObjects.value.length }) } catch (e) {}
-      alert('Scène succesvol geladen!')
+      showNotification('Scène succesvol geladen!', 'success')
     } else {
-      alert('Laden van scène is mislukt')
+      showNotification('Laden van scène is mislukt', 'error')
     }
   } catch (error) {
     console.error('Failed to load scene:', error)
@@ -1142,6 +1135,55 @@ const loadSceneFromStorage = async () => {
 // --- Versioned saves helpers ---
 const savedScenes = ref([])
 const showVersionsPanel = ref(false)
+
+// Inline toast notification (replaces blocking alert() calls for save/load)
+const notificationMessageTitle = ref('')
+const notificationMessageSub = ref('')
+const notificationType = ref('info') // 'info' | 'success' | 'error'
+const notificationVisible = ref(false)
+let notificationTimer = null
+
+// toast positioning: align under the top-bar (computed at show time and on resize)
+const toastStyle = ref({ left: '228px', top: '86px', width: '360px' })
+const computeToastPosition = () => {
+  try {
+    const bar = document.querySelector('.top-bar')
+    if (!bar) return
+    const rect = bar.getBoundingClientRect()
+    const left = Math.max(12, rect.left + 20)
+    const width = Math.min(320, Math.max(240, rect.width * 0.24))
+    const top = Math.max(8, rect.bottom + 8)
+    toastStyle.value = { left: `${left}px`, top: `${top}px`, width: `${width}px` }
+  } catch (e) {
+    // ignore
+  }
+}
+
+const handleWindowResizeForToast = () => computeToastPosition()
+
+const showNotification = (title, type = 'info', duration = 3000, subtitle = '') => {
+  try {
+    if (notificationTimer) {
+      clearTimeout(notificationTimer)
+      notificationTimer = null
+    }
+    notificationMessageTitle.value = title || ''
+    notificationMessageSub.value = subtitle || ''
+    notificationType.value = type || 'info'
+    computeToastPosition()
+    notificationVisible.value = true
+    // ensure it repositions on resize while visible
+    window.addEventListener('resize', handleWindowResizeForToast)
+    notificationTimer = setTimeout(() => {
+      notificationVisible.value = false
+      notificationTimer = null
+      window.removeEventListener('resize', handleWindowResizeForToast)
+    }, duration)
+  } catch (e) {
+    // fallback to alert if something goes wrong
+    try { alert(title + (subtitle ? ' ' + subtitle : '')) } catch (err) {}
+  }
+}
 
 const loadSavedScenes = () => {
   try {
@@ -1185,18 +1227,28 @@ const loadSavedScenes = () => {
   }
 }
 
+onBeforeUnmount(() => {
+  try {
+    if (notificationTimer) {
+      clearTimeout(notificationTimer)
+      notificationTimer = null
+    }
+  } catch (e) {}
+  try { window.removeEventListener('resize', handleWindowResizeForToast) } catch (e) {}
+})
+
 const loadSceneFromHistory = async (id) => {
   try {
     const historyKey = 'memorialSceneHistory'
     const history = JSON.parse(localStorage.getItem(historyKey) || '[]')
     const entry = (history || []).find(h => h.id === id)
-    if (!entry) return alert('Geselecteerde versie niet gevonden')
+    if (!entry) return showNotification('Geselecteerde versie niet gevonden', 'info')
     const success = await deserializeSceneState(entry.data)
     if (success) {
-      alert(`Versie geladen: ${entry.savedAt}`)
+      showNotification('Versie geladen', 'success', 3000, `${new Date(entry.savedAt).toLocaleString()}`)
       loadSavedScenes()
     } else {
-      alert('Laden van geselecteerde versie is mislukt')
+      showNotification('Laden van geselecteerde versie is mislukt', 'error')
     }
   } catch (e) {
     console.error(e)
@@ -3110,6 +3162,14 @@ onBeforeUnmount(() => {
 
     
 
+    <!-- Toast notification (top-right) -->
+    <transition name="toast-fade">
+      <div v-if="notificationVisible" class="notification-toast" :class="notificationType" :style="toastStyle">
+        <div class="toast-main">{{ notificationMessageTitle }}</div>
+        <div v-if="notificationMessageSub" class="toast-sub">{{ notificationMessageSub }}</div>
+      </div>
+    </transition>
+
     <section class="scene-stage">
       <canvas ref="canvasRef" class="scene-canvas" aria-label="3D herdenkingsruimte"></canvas>
 
@@ -3171,15 +3231,7 @@ onBeforeUnmount(() => {
           <span class="dock-icon">💾</span>
           <span class="dock-label">Opslaan</span>
         </button>
-        <button
-          type="button"
-          class="storage-dock-button"
-          title="Laad scène uit lokale opslag"
-          @click="loadSceneFromStorage"
-        >
-          <span class="dock-icon">📂</span>
-          <span class="dock-label">Laden</span>
-        </button>
+        <!-- Removed direct Load button: use Versions to restore saved scenes -->
         <button
           v-if="effectiveRole === 'admin'"
           type="button"
@@ -3200,8 +3252,8 @@ onBeforeUnmount(() => {
                 <div class="version-date">{{ new Date(entry.savedAt).toLocaleString() }}</div>
               </div>
               <div class="version-actions">
-                <button type="button" @click="loadSceneFromHistory(entry.id)">Laad</button>
-                <button type="button" @click="deleteSavedScene(entry.id)">Verwijder</button>
+                <button type="button" class="version-restore" @click="loadSceneFromHistory(entry.id)">Herstel</button>
+                <button type="button" class="version-delete" @click="deleteSavedScene(entry.id)">Verwijder</button>
               </div>
             </li>
           </ul>
@@ -3377,9 +3429,9 @@ onBeforeUnmount(() => {
           </div>
 
           <div class="room-settings-section">
-            <div class="room-settings-label">Co-editors en co-admins uitnodigen</div>
+            <div class="room-settings-label">Co-editors uitnodigen</div>
             <p class="room-settings-help">
-              Voeg mensen toe en kies hun rol. Je kunt maximaal 2 co-admins toevoegen.
+              Voeg mensen toe en kies hun rol.
             </p>
 
             <div id="room-invite-row" class="room-settings-row room-invite-form">
@@ -3400,9 +3452,7 @@ onBeforeUnmount(() => {
               <button type="button" class="room-invite-button" @click="inviteMember">Uitnodigen</button>
             </div>
 
-            <div v-if="inviteRole === 'co-admin' && coAdminCount >= 2" class="room-settings-help room-settings-warning">
-              Maximaal 2 co-admins toegestaan.
-            </div>
+            <!-- co-admin removed; no special limit message -->
             <div v-if="roomPrivacy !== 'private' && inviteRole === 'viewer'" class="room-settings-help">
               Viewer-uitnodigingen zijn alleen beschikbaar als de kamer privé is.
             </div>
@@ -3457,7 +3507,7 @@ onBeforeUnmount(() => {
                 <div class="room-switcher-meta">
                   <div class="room-switcher-name">{{ room.name }}</div>
                   <div class="room-switcher-subtitle">
-                    <span>{{ room.role === 'admin' ? 'Admin' : room.role === 'co-admin' ? 'Co-admin' : room.role === 'viewer' ? 'Viewer' : 'Co-editor' }}</span>
+                    <span>{{ room.role === 'admin' ? 'Admin' : room.role === 'viewer' ? 'Viewer' : 'Co-editor' }}</span>
                     <span>·</span>
                     <span>{{ room.privacy === 'private' ? 'Privé' : 'Openbaar' }}</span>
                     <span v-if="room.id === props.roomId">· Huidige ruimte</span>
@@ -3921,7 +3971,7 @@ onBeforeUnmount(() => {
   align-items: center;
   justify-content: space-between;
   gap: 14px;
-  padding: 12px 14px;
+  padding: 10px 12px;
   border: 1px solid #e9e9f2;
   border-radius: 12px;
   background: #fafafe;
@@ -4274,6 +4324,75 @@ onBeforeUnmount(() => {
 .storage-dock-button:hover {
   background: rgba(233, 224, 248, 0.98);
 }
+
+
+.notification-toast {
+  position: fixed;
+  z-index: 10100;
+  min-width: 220px;
+  padding: 12px 14px;
+  border-radius: 10px;
+  box-shadow: 0 12px 28px rgba(18,16,36,0.14);
+  color: #fff;
+  font-weight: 700;
+  font-family: 'Outfit', 'Segoe UI', sans-serif;
+}
+
+.notification-toast.info { background: linear-gradient(180deg,#6c757d,#5a6268); }
+.notification-toast.success { background: linear-gradient(180deg,#4caf50,#3a9b3a); }
+.notification-toast.error { background: linear-gradient(180deg,#e04b4b,#c23a3a); }
+
+.notification-toast .toast-main { font-size: 15px; line-height: 1.2; }
+.notification-toast .toast-sub { font-size: 12px; opacity: 0.95; margin-top: 4px; font-weight: 600 }
+
+.toast-fade-enter-active, .toast-fade-leave-active { transition: opacity .22s ease, transform .22s cubic-bezier(.2,.9,.2,1); }
+.toast-fade-enter-from, .toast-fade-leave-to { opacity: 0; transform: translateY(-6px); }
+.toast-fade-enter-to, .toast-fade-leave-from { opacity: 1; transform: translateY(0); }
+
+.versions-panel {
+  position: absolute;
+  right: 0;
+  bottom: 70px;
+  width: 320px;
+  max-height: 56vh;
+  overflow: auto;
+  padding: 12px;
+  border-radius: 12px;
+  background: rgba(255,255,255,0.96);
+  border: 1px solid rgba(96,76,150,0.12);
+  box-shadow: 0 14px 30px rgba(0,0,0,0.12);
+  z-index: 28;
+}
+
+.versions-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.version-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 8px 10px;
+  border-radius: 10px;
+  background: #faf9ff;
+  border: 1px solid rgba(200,190,230,0.24);
+}
+
+.version-meta { flex: 1 1 auto; min-width: 0; }
+.version-label { font-weight: 700; color: #1a1a1a; font-size: 14px; }
+.version-date { font-size: 12px; color: #6b6b7b; margin-top: 4px; }
+
+.version-actions { display: flex; gap: 8px; flex: 0 0 auto; }
+.version-restore, .version-delete { border: none; padding: 8px 10px; border-radius: 8px; font-weight: 700; cursor: pointer; }
+.version-restore { background: #6c5ce7; color: #fff; }
+.version-delete { background: #fff; border: 1px solid rgba(200,50,50,0.12); color: #c23a3a; }
+
 
 .photo-tooltip {
   position: absolute;
