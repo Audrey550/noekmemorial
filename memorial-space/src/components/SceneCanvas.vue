@@ -52,6 +52,7 @@ const handleTutorialFinish = () => {
 }
 
 const canvasRef = ref(null)
+const colorInputRef = ref(null)
 const username = ref('Naam')
 const roomPrivacy = ref('private')
 const roomInviteCode = ref(null)
@@ -200,6 +201,18 @@ const roomSwitcherRooms = computed(() => {
   return Array.isArray(props.accessibleRooms) ? props.accessibleRooms : []
 })
 
+watch(effectiveRole, (role) => {
+  if (role === 'editor') {
+    activePanel.value = 'media'
+    showQuickPanel.value = true
+    return
+  }
+
+  if (role !== 'admin') {
+    showQuickPanel.value = false
+  }
+})
+
 watch(() => props.currentUser, (nu) => {
   if (nu && nu.displayName) username.value = nu.displayName
 })
@@ -238,6 +251,7 @@ const selectedSceneObject = ref(null)
 const selectedSceneObjectType = ref('')
 const selectedSceneObjectLabel = ref('')
 const selectedSceneObjectColor = ref('#3c3c3c')
+const newObjectMessage = ref('')
 const transformStep = 0.2
 const rotateStep = Math.PI / 12
 const scaleStep = 0.1
@@ -251,6 +265,7 @@ const isApplyingHistory = ref(false)
 const maxUndoSteps = 40
 const showResetRoomModal = ref(false)
 const canEditSceneObjects = computed(() => effectiveRole.value === 'admin' || effectiveRole.value === 'editor')
+const leftToolbarTitle = computed(() => effectiveRole.value === 'editor' ? 'Media' : 'Assets')
 // Initialize from localStorage if available
 try {
   const _saved = localStorage.getItem('memorial_hideDeleteHint')
@@ -732,6 +747,10 @@ const applyColorToSelectedObject = (colorValue) => {
   record.color = normalizedColor
   selectedSceneObjectColor.value = normalizedColor
   persistCurrentRoomScene()
+}
+
+const openColorPicker = () => {
+  try { colorInputRef.value?.click?.() } catch (e) {}
 }
 
 // Available models for the asset panel
@@ -1547,7 +1566,10 @@ const createSceneObjectRecord = (object, assetId, payload = {}, options = {}) =>
 
   sceneObjects.value.push(record)
 
-  if (options.select !== false) {
+  // Do not auto-select newly placed objects by default. Selection should
+  // happen explicitly when the user clicks an object in the scene to
+  // open the object editor.
+  if (options.select === true) {
     selectSceneObject(record)
   }
 
@@ -2038,6 +2060,23 @@ const removeSelectedSceneObject = () => {
   clearHoveredPhoto()
   clearSceneSelection()
   persistCurrentRoomScene()
+}
+
+const addMessageToSelectedObject = (text) => {
+  if (!selectedSceneObject.value || !text) return
+  const rec = selectedSceneObject.value
+  if (!rec.messages) rec.messages = []
+  const msg = {
+    id: Date.now(),
+    author: props.currentUser?.displayName || 'Gast',
+    text: text.trim(),
+    created_at: (new Date()).toISOString(),
+  }
+  rec.messages.push(msg)
+  newObjectMessage.value = ''
+  pushUndoSnapshot()
+  try { persistCurrentRoomScene() } catch (e) {}
+  showNotification('Bericht toegevoegd', 'success', 2200)
 }
 
 const applyTransformToSelectedObject = ({ moveX = 0, moveY = 0, moveZ = 0, rotateY = 0, scaleAdjust = 0 }) => {
@@ -3572,24 +3611,20 @@ onBeforeUnmount(() => {
 
       <aside v-if="effectiveRole !== 'viewer'" class="left-toolbar vertical-center" aria-label="Acties en scènebeheer">
         <div id="asset-panel" class="left-toolbar-card">
-          <h3 class="left-toolbar-title">Assets</h3>
+          <h3 class="left-toolbar-title">{{ leftToolbarTitle }}</h3>
 
           <nav class="action-dock column" aria-label="Snelle acties">
-            <button type="button" class="dock-button" :class="{ active: showQuickPanel && activePanel === 'room' }" @click="openQuickPanel('room')">
+            <button v-if="effectiveRole === 'admin'" type="button" class="dock-button" :class="{ active: showQuickPanel && activePanel === 'room' }" @click="openQuickPanel('room')">
               <span class="dock-icon">🏠</span>
               <span class="dock-label">Ruimte</span>
             </button>
-            <button type="button" class="dock-button" :class="{ active: showQuickPanel && activePanel === 'models' }" @click="openQuickPanel('models')">
+            <button v-if="effectiveRole === 'admin'" type="button" class="dock-button" :class="{ active: showQuickPanel && activePanel === 'models' }" @click="openQuickPanel('models')">
               <span class="dock-icon">🧩</span>
               <span class="dock-label">Modellen</span>
             </button>
-            <button type="button" class="dock-button" :class="{ active: showQuickPanel && activePanel === 'sound' }" @click="openQuickPanel('sound')">
+            <button v-if="effectiveRole === 'admin'" type="button" class="dock-button" :class="{ active: showQuickPanel && activePanel === 'sound' }" @click="openQuickPanel('sound')">
               <span class="dock-icon">🔊</span>
               <span class="dock-label">Geluid</span>
-            </button>
-            <button type="button" class="dock-button" :class="{ active: showQuickPanel && activePanel === 'media' }" @click="openQuickPanel('media')">
-              <span class="dock-icon">🖼️</span>
-              <span class="dock-label">Media</span>
             </button>
           </nav>
 
@@ -3728,7 +3763,7 @@ onBeforeUnmount(() => {
         </div>
 
         <div v-if="!hideDeleteHint" class="selection-hint">
-          <span>Druk op de Delete-toets om het geselecteerde object te verwijderen</span>
+          <span>Tip: druk op de Delete-toets om het geselecteerde object te verwijderen</span>
           <button type="button" class="selection-hint-close" @click="dismissDeleteHint" aria-label="Sluit hint">×</button>
         </div>
 
@@ -3748,15 +3783,17 @@ onBeforeUnmount(() => {
               />
             </div>
 
-            <label class="color-picker-field">
-              <span>Eigen kleur</span>
+            <div class="color-picker-field">
+              <span @click="openColorPicker">Eigen kleur</span>
               <input
+                ref="colorInputRef"
+                aria-label="Eigen kleur"
                 :value="selectedSceneObjectColor"
                 type="color"
                 class="color-picker-input"
                 @input="applyColorToSelectedObject(($event.target).value)"
               />
-            </label>
+            </div>
           </div>
         </div>
 
@@ -3824,6 +3861,23 @@ onBeforeUnmount(() => {
           <button type="button" class="selection-delete-button" @click="removeSelectedSceneObject">
             Verwijderen
           </button>
+        </div>
+
+        <div class="selection-messages">
+          <h4>Berichten</h4>
+          <div v-if="selectedSceneObject.messages && selectedSceneObject.messages.length" class="messages-list">
+            <div v-for="m in selectedSceneObject.messages" :key="m.id" class="message-item">
+              <div class="message-meta"><strong>{{ m.author }}</strong> · <small>{{ new Date(m.created_at).toLocaleString() }}</small></div>
+              <div class="message-text">{{ m.text }}</div>
+            </div>
+          </div>
+
+          <div class="message-input">
+            <textarea v-model="newObjectMessage" placeholder="Voeg een bericht toe..." rows="3"></textarea>
+            <div class="message-actions">
+              <button type="button" class="message-add-button" @click="addMessageToSelectedObject(newObjectMessage)">Plaats bericht</button>
+            </div>
+          </div>
         </div>
 
       </aside>
@@ -4082,8 +4136,8 @@ onBeforeUnmount(() => {
 .top-bar-actions {
   display: flex;
   align-items: center;
-  gap: 12px;
-  margin-left: 18px;
+  gap: 6px;
+  margin-left: 4px;
   flex: 0 0 auto;
 }
 
@@ -4154,7 +4208,7 @@ onBeforeUnmount(() => {
   overflow: visible;
   white-space: nowrap;
   text-overflow: ellipsis;
-  margin: 0 12px;
+  margin: 0 2px 0 12px;
   max-width: 420px;
   opacity: 1;
   transform: translateY(0);
@@ -4229,7 +4283,7 @@ onBeforeUnmount(() => {
 .profile-area {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 6px;
   font-family: 'Outfit', 'Segoe UI', sans-serif;
   font-size: 28px;
   color: #1a1a1a;
@@ -5092,9 +5146,10 @@ onBeforeUnmount(() => {
 .color-group {
   margin-top: 8px;
   padding: 12px;
-  border-radius: 14px;
-  background: rgba(242, 175, 199, 0.08);
-  border: 1px solid rgba(242, 175, 199, 0.18);
+  border-radius: 12px;
+  /* Subtle, neutral styling to match other controls */
+  background: transparent;
+  border: 1px solid rgba(31, 26, 59, 0.06);
 }
 
 .color-row {
@@ -5124,9 +5179,9 @@ onBeforeUnmount(() => {
 
 .color-picker-field {
   display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
   font-family: 'Outfit', 'Segoe UI', sans-serif;
   font-size: 12px;
   font-weight: 600;
@@ -5140,6 +5195,8 @@ onBeforeUnmount(() => {
   border-radius: 10px;
   background: transparent;
   padding: 0;
+  cursor: pointer;
+  transition: transform 120ms ease, box-shadow 120ms ease, border-color 120ms ease;
 }
 
 .color-picker-input::-webkit-color-swatch-wrapper {
@@ -5149,6 +5206,20 @@ onBeforeUnmount(() => {
 .color-picker-input::-webkit-color-swatch {
   border: 1px solid rgba(31, 26, 59, 0.18);
   border-radius: 10px;
+}
+
+.color-picker-field > span {
+  cursor: pointer;
+}
+
+.color-picker-input:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 20px rgba(31, 26, 59, 0.10);
+  border: 1px solid rgba(31, 26, 59, 0.28);
+}
+
+.color-picker-field > span:hover {
+  color: #1f1a3b;
 }
 
 .selection-delete-button {
