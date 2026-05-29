@@ -6,6 +6,7 @@ import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js'
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js'
 import noekLogoTextUrl from '../assets/Noek_LogoText.svg'
 import AssetPanel from './AssetPanel.vue'
+import ModeratorPanel from './ModeratorPanel.vue'
 import TutorialOverlay from './TutorialOverlay.vue'
 import createAdminTutorialSteps from '../tutorials/admin-tutorials.js'
 import { logEvent } from '../lib/analytics'
@@ -73,6 +74,8 @@ const showRoomSettingsModal = ref(false)
 const showAdminSettingsModal = ref(false)
 const editDisplayName = ref('')
 const visitorPreviewMode = ref(false)
+const adminViewMode = ref('edit') // 'edit' | 'moderator' | 'visitor'
+const showAdminViewMenu = ref(false)
 const showTopNavMenu = ref(false)
 const tutorialProfileMenuPinned = ref(false)
 
@@ -91,11 +94,69 @@ const effectiveRole = computed(() => {
 
 const setVisitorPreviewMode = (enabled) => {
   visitorPreviewMode.value = enabled
+  showAdminViewMenu.value = false
   showQuickPanel.value = false
   showRoomSettingsModal.value = false
   showAdminSettingsModal.value = false
   showTopNavMenu.value = false
   clearSceneSelection()
+}
+
+const isAdmin = computed(() => props.currentUser?.role === 'admin')
+
+const isModeratorMode = computed(() => isAdmin.value && adminViewMode.value === 'moderator')
+
+const adminViewLabel = computed(() => {
+  if (!isAdmin.value) {
+    return visitorButtonLabel.value
+  }
+
+  if (adminViewMode.value === 'moderator') {
+    return 'Bekijk als: Moderator'
+  }
+
+  if (adminViewMode.value === 'visitor') {
+    return 'Bekijk als: Bezoeker'
+  }
+
+  return 'Bekijk als: Admin'
+})
+
+const setAdminViewMode = (mode) => {
+  if (!isAdmin.value) return
+  showAdminViewMenu.value = false
+  adminViewMode.value = mode
+  visitorPreviewMode.value = mode === 'visitor'
+
+  if (mode !== 'moderator') {
+    showQuickPanel.value = false
+  }
+
+  if (mode !== 'visitor') {
+    visitorPreviewMode.value = false
+  }
+
+  showRoomSettingsModal.value = false
+  showAdminSettingsModal.value = false
+  showTopNavMenu.value = false
+  clearSceneSelection()
+}
+
+watch(() => props.currentUser?.role, (role) => {
+  if (role !== 'admin') {
+    showAdminViewMenu.value = false
+    adminViewMode.value = 'edit'
+    visitorPreviewMode.value = false
+  }
+})
+
+const toggleAdminViewMenu = () => {
+  if (!isAdmin.value) return
+  showAdminViewMenu.value = !showAdminViewMenu.value
+}
+
+const closeAdminViewMenu = () => {
+  showAdminViewMenu.value = false
 }
 
 const toggleTopNavMenu = () => {
@@ -205,6 +266,8 @@ let roomShadow = null
 let roomDeskChair = null
 let roomDeskChairBaseRotationY = Math.PI
 const profileMenuElement = ref(null)
+const adminViewMenuElement = ref(null)
+const adminViewMenuTopElement = ref(null)
 let selectionHelper = null
 let sceneObjectIdCounter = 1
 let gltfLoader = new GLTFLoader()
@@ -696,6 +759,7 @@ const serializeSceneState = () => {
         messageData: record.messageData || null,
         candleData: record.candleData || null,
         color,
+        hidden: !!record.hidden,
       }
     }),
   }
@@ -749,15 +813,6 @@ const saveRoomMeta = () => {
   // notify parent that room metadata changed (e.g., name)
   try { emit('room-updated', { id, name: roomName.value }) } catch (e) {}
 
-}
-
-const toggleRoomPrivacy = () => {
-  if (!props.currentUser || effectiveRole.value !== 'admin') {
-    alert('Alleen de eigenaar van de kamer kan de privacy wijzigen (demo).')
-    return
-  }
-  roomPrivacy.value = roomPrivacy.value === 'private' ? 'public' : 'private'
-  saveRoomMeta()
 }
 
 const generateInviteCode = () => {
@@ -1006,6 +1061,10 @@ const deserializeSceneState = async (jsonString) => {
         createSceneObjectRecord(photoCard, objData.assetId, { photoData: objData.photoData })
         sceneObjects.value[sceneObjects.value.length - 1].id = objData.id
         photoCard.userData.sceneObjectId = objData.id
+        if (objData.hidden) {
+          sceneObjects.value[sceneObjects.value.length - 1].hidden = true
+          try { photoCard.visible = false } catch (e) {}
+        }
       } else if (objData.assetId === 'audio' && objData.audioData) {
         const audioCard = createAudioCard(objData.audioData)
         audioCard.position.set(objData.position.x, objData.position.y, objData.position.z)
@@ -1015,6 +1074,10 @@ const deserializeSceneState = async (jsonString) => {
         createSceneObjectRecord(audioCard, objData.assetId, { audioData: objData.audioData })
         sceneObjects.value[sceneObjects.value.length - 1].id = objData.id
         audioCard.userData.sceneObjectId = objData.id
+        if (objData.hidden) {
+          sceneObjects.value[sceneObjects.value.length - 1].hidden = true
+          try { audioCard.visible = false } catch (e) {}
+        }
       } else if (objData.assetId === 'video' && objData.videoData) {
         const videoCard = createVideoCard(objData.videoData)
         videoCard.position.set(objData.position.x, objData.position.y, objData.position.z)
@@ -1024,6 +1087,10 @@ const deserializeSceneState = async (jsonString) => {
         createSceneObjectRecord(videoCard, objData.assetId, { videoData: objData.videoData })
         sceneObjects.value[sceneObjects.value.length - 1].id = objData.id
         videoCard.userData.sceneObjectId = objData.id
+        if (objData.hidden) {
+          sceneObjects.value[sceneObjects.value.length - 1].hidden = true
+          try { videoCard.visible = false } catch (e) {}
+        }
       } else if (objData.assetId === 'message' && objData.messageData) {
         const messageGroup = new THREE.Group()
         messageGroup.position.set(objData.position.x, objData.position.y, objData.position.z)
@@ -1033,6 +1100,10 @@ const deserializeSceneState = async (jsonString) => {
         createSceneObjectRecord(messageGroup, objData.assetId, { messageData: objData.messageData })
         sceneObjects.value[sceneObjects.value.length - 1].id = objData.id
         messageGroup.userData.sceneObjectId = objData.id
+        if (objData.hidden) {
+          sceneObjects.value[sceneObjects.value.length - 1].hidden = true
+          try { messageGroup.visible = false } catch (e) {}
+        }
       } else if (objData.assetId && colorableAssetIds.has(objData.assetId)) {
         let model = null
 
@@ -1074,6 +1145,10 @@ const deserializeSceneState = async (jsonString) => {
         createSceneObjectRecord(model, objData.assetId, { color: objData.color || extractObjectColor(model) })
         sceneObjects.value[sceneObjects.value.length - 1].id = objData.id
         model.userData.sceneObjectId = objData.id
+        if (objData.hidden) {
+          sceneObjects.value[sceneObjects.value.length - 1].hidden = true
+          try { model.visible = false } catch (e) {}
+        }
       }
     }
 
@@ -1359,6 +1434,27 @@ const createSceneObjectRecord = (object, assetId, payload = {}, options = {}) =>
   return id
 }
 
+// Moderation helpers: soft-hide / restore scene objects
+const hideSceneObject = (id) => {
+  const idx = sceneObjects.value.findIndex(s => s.id === id)
+  if (idx === -1) return
+  const rec = sceneObjects.value[idx]
+  rec.hidden = true
+  try { if (rec.object) rec.object.visible = false } catch (e) {}
+  try { saveSceneToStorage() } catch (e) {}
+  showNotification('Item verborgen', 'info', 3000)
+}
+
+const restoreSceneObject = (id) => {
+  const idx = sceneObjects.value.findIndex(s => s.id === id)
+  if (idx === -1) return
+  const rec = sceneObjects.value[idx]
+  rec.hidden = false
+  try { if (rec.object) rec.object.visible = true } catch (e) {}
+  try { saveSceneToStorage() } catch (e) {}
+  showNotification('Item hersteld', 'success', 3000)
+}
+
 const createAudioCard = (audioData) => {
   const group = new THREE.Group()
   group.userData.audioData = audioData
@@ -1631,6 +1727,9 @@ const saveRoomSettings = () => {
 
 const handleDocumentClick = (event) => {
   const clickedProfileMenu = profileMenuElement.value && profileMenuElement.value.contains(event.target)
+  const clickedAdminViewMenuMain = adminViewMenuElement.value && adminViewMenuElement.value.contains(event.target)
+  const clickedAdminViewMenuTop = adminViewMenuTopElement.value && adminViewMenuTopElement.value.contains(event.target)
+  const clickedAdminViewMenu = clickedAdminViewMenuMain || clickedAdminViewMenuTop
   const clickedTopNavMenu = topNavMenuElement.value && topNavMenuElement.value.contains(event.target)
 
   if (showProfileMenu.value && !clickedProfileMenu && !tutorialProfileMenuPinned.value) {
@@ -1640,6 +1739,10 @@ const handleDocumentClick = (event) => {
   if (showTopNavMenu.value && !clickedTopNavMenu) {
     closeTopNavMenu()
   }
+
+  if (showAdminViewMenu.value && !clickedAdminViewMenu) {
+    closeAdminViewMenu()
+  }
 }
 
 const handleDocumentKeydown = (event) => {
@@ -1648,6 +1751,7 @@ const handleDocumentKeydown = (event) => {
       closeProfileMenu()
     }
     closeTopNavMenu()
+    closeAdminViewMenu()
   }
 }
 
@@ -3039,8 +3143,64 @@ onBeforeUnmount(() => {
           {{ showFloor ? 'Vloer aan' : 'Vloer uit' }}
         </button>
 
+        <div
+          v-if="props.currentUser && props.currentUser.role === 'admin'"
+          ref="adminViewMenuElement"
+          class="mode-menu-wrap"
+        >
+          <button
+            type="button"
+            class="floor-toggle mode-menu-trigger"
+            :title="adminViewLabel"
+            :aria-expanded="showAdminViewMenu"
+            aria-haspopup="menu"
+            @click.stop="toggleAdminViewMenu"
+          >
+            {{ adminViewLabel }}
+            <span class="mode-menu-caret" aria-hidden="true">▾</span>
+          </button>
+
+          <transition name="profile-fade">
+            <div v-if="showAdminViewMenu" class="mode-menu" role="menu" aria-label="Bekijk als modus" @click.stop>
+              <button
+                type="button"
+                class="profile-menu-item mode-menu-item"
+                :class="{ active: adminViewMode === 'edit' }"
+                role="menuitemradio"
+                :aria-checked="adminViewMode === 'edit'"
+                @click="setAdminViewMode('edit')"
+              >
+                <span class="mode-menu-check" aria-hidden="true">{{ adminViewMode === 'edit' ? '✓' : '' }}</span>
+                <span>Admin</span>
+              </button>
+              <button
+                type="button"
+                class="profile-menu-item mode-menu-item"
+                :class="{ active: adminViewMode === 'moderator' }"
+                role="menuitemradio"
+                :aria-checked="adminViewMode === 'moderator'"
+                @click="setAdminViewMode('moderator')"
+              >
+                <span class="mode-menu-check" aria-hidden="true">{{ adminViewMode === 'moderator' ? '✓' : '' }}</span>
+                <span>Moderator</span>
+              </button>
+              <button
+                type="button"
+                class="profile-menu-item mode-menu-item"
+                :class="{ active: adminViewMode === 'visitor' }"
+                role="menuitemradio"
+                :aria-checked="adminViewMode === 'visitor'"
+                @click="setAdminViewMode('visitor')"
+              >
+                <span class="mode-menu-check" aria-hidden="true">{{ adminViewMode === 'visitor' ? '✓' : '' }}</span>
+                <span>Bezoeker</span>
+              </button>
+            </div>
+          </transition>
+        </div>
+
         <button
-          v-if="props.currentUser && (props.currentUser.role === 'admin' || props.currentUser.role === 'editor')"
+          v-else-if="props.currentUser && props.currentUser.role === 'editor'"
           type="button"
           class="floor-toggle"
           :title="visitorPreviewMode ? 'Terug naar bewerkmodus' : 'Voorvertoning bezoeker'"
@@ -3049,9 +3209,6 @@ onBeforeUnmount(() => {
           {{ visitorButtonLabel }}
         </button>
 
-        <button v-if="props.currentUser && props.currentUser.role === 'admin'" type="button" class="floor-toggle" title="Schakel privacy van kamer" @click="toggleRoomPrivacy">
-          {{ roomPrivacy === 'private' ? 'Privé' : 'Openbaar' }}
-        </button>
       </div>
 
       <div class="room-title">
@@ -3095,18 +3252,70 @@ onBeforeUnmount(() => {
                 {{ showFloor ? 'Vloer aan' : 'Vloer uit' }}
               </button>
 
+              <div
+                v-if="props.currentUser && props.currentUser.role === 'admin'"
+                ref="adminViewMenuTopElement"
+                class="mode-menu-wrap mode-menu-wrap--topnav"
+              >
+                <button
+                  type="button"
+                  class="floor-toggle mode-menu-trigger"
+                  :title="adminViewLabel"
+                  :aria-expanded="showAdminViewMenu"
+                  aria-haspopup="menu"
+                  @click.stop="toggleAdminViewMenu"
+                >
+                  {{ adminViewLabel }}
+                  <span class="mode-menu-caret" aria-hidden="true">▾</span>
+                </button>
+
+                <transition name="profile-fade">
+                  <div v-if="showAdminViewMenu" class="mode-menu mode-menu--inline" role="menu" aria-label="Bekijk als modus" @click.stop>
+                    <button
+                      type="button"
+                      class="profile-menu-item mode-menu-item"
+                      :class="{ active: adminViewMode === 'edit' }"
+                      role="menuitemradio"
+                      :aria-checked="adminViewMode === 'edit'"
+                      @click="setAdminViewMode('edit')"
+                    >
+                      <span class="mode-menu-check" aria-hidden="true">{{ adminViewMode === 'edit' ? '✓' : '' }}</span>
+                      <span>Admin</span>
+                    </button>
+                    <button
+                      type="button"
+                      class="profile-menu-item mode-menu-item"
+                      :class="{ active: adminViewMode === 'moderator' }"
+                      role="menuitemradio"
+                      :aria-checked="adminViewMode === 'moderator'"
+                      @click="setAdminViewMode('moderator')"
+                    >
+                      <span class="mode-menu-check" aria-hidden="true">{{ adminViewMode === 'moderator' ? '✓' : '' }}</span>
+                      <span>Moderator</span>
+                    </button>
+                    <button
+                      type="button"
+                      class="profile-menu-item mode-menu-item"
+                      :class="{ active: adminViewMode === 'visitor' }"
+                      role="menuitemradio"
+                      :aria-checked="adminViewMode === 'visitor'"
+                      @click="setAdminViewMode('visitor')"
+                    >
+                      <span class="mode-menu-check" aria-hidden="true">{{ adminViewMode === 'visitor' ? '✓' : '' }}</span>
+                      <span>Bezoeker</span>
+                    </button>
+                  </div>
+                </transition>
+              </div>
+
               <button
-                v-if="props.currentUser && (props.currentUser.role === 'admin' || props.currentUser.role === 'editor')"
+                v-else-if="props.currentUser && props.currentUser.role === 'editor'"
                 type="button"
                 class="floor-toggle"
                 :title="visitorPreviewMode ? 'Terug naar bewerkmodus' : 'Voorvertoning bezoeker'"
                 @click="setVisitorPreviewMode(!visitorPreviewMode)"
               >
                 {{ visitorButtonLabel }}
-              </button>
-
-              <button v-if="props.currentUser && props.currentUser.role === 'admin'" type="button" class="floor-toggle" title="Schakel privacy van kamer" @click="toggleRoomPrivacy">
-                {{ roomPrivacy === 'private' ? 'Privé' : 'Openbaar' }}
               </button>
             </div>
           </transition>
@@ -3157,6 +3366,15 @@ onBeforeUnmount(() => {
             </transition>
           </div>
         </div>
+
+          <!-- Moderator panel (admin-only) -->
+          <ModeratorPanel
+            v-if="isModeratorMode"
+            :objects="sceneObjects"
+            @hide="hideSceneObject"
+            @restore="restoreSceneObject"
+            @close="setAdminViewMode('edit')"
+          />
       </div>
     </header>
 
@@ -3622,7 +3840,7 @@ onBeforeUnmount(() => {
   max-width: 520px;
   opacity: 1;
   transform: translateX(0);
-  overflow: hidden;
+  overflow: visible;
   transition:
     max-width 0.28s ease,
     opacity 0.2s ease,
@@ -4263,6 +4481,68 @@ onBeforeUnmount(() => {
   color: #4a3f67;
   padding: 10px 14px;
   margin-left: 12px;
+}
+
+.mode-menu-wrap {
+  position: relative;
+}
+
+.mode-menu-wrap--topnav {
+  width: 100%;
+}
+
+.mode-menu-trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.mode-menu-caret {
+  font-size: 12px;
+  line-height: 1;
+}
+
+.mode-menu {
+  position: absolute;
+  left: 0;
+  top: calc(100% + 8px);
+  min-width: 220px;
+  padding: 8px;
+  border: 1px solid #e0e0e0;
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.96);
+  box-shadow: 0 14px 30px rgba(0, 0, 0, 0.14);
+  backdrop-filter: blur(12px);
+  z-index: 10030;
+}
+
+.mode-menu--inline {
+  position: static;
+  margin-top: 8px;
+  min-width: 100%;
+}
+
+.mode-menu-item {
+  font-size: 15px;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.mode-menu-check {
+  width: 14px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 13px;
+  font-weight: 700;
+  color: #6c5ce7;
+}
+
+.mode-menu-item.active {
+  background: rgba(242, 175, 199, 0.26);
+  color: #1f1a3b;
+  font-weight: 700;
 }
 
 .topnav-accent-button.active {
