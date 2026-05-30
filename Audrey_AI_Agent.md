@@ -1,3 +1,15 @@
+## Session Snapshot (2026-05-30)
+### Summary — Current work
+- Aligned the media panel with the admin Assets-panel look by switching the media shell to the same white card style, while keeping the existing media workflows inside it.
+- Preserved the media substate across visitor-preview toggles so the panel no longer jumps to a different view when preview mode is switched.
+- Corrected the role split so the Media panel is shown for co-editors by default and not on the admin editor page.
+- Matched the media panel width, height, colors, and button sizing more closely to the admin card.
+
+### Tracker Update
+- 2026-05-30: Restyled the media panel to copy the admin Assets-panel look and kept media flow state intact when switching visitor preview on and off.
+- 2026-05-30: Corrected the quick panel role logic so Media is the co-editor default and not an admin-page panel.
+- 2026-05-30: Tightened the media panel dimensions and button sizing to match the admin card more closely.
+
 ## Session Snapshot (2026-05-29)
 ### Summary — Current work
 - Added an admin-only `Kamer resetten` action in the Assets panel (`Ruimte` section).
