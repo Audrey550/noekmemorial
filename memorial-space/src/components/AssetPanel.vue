@@ -418,6 +418,72 @@ const sampleGalleryPhotos = [
       </svg>
     `),
   },
+  {
+    id: 'stock-1',
+    name: 'Stock1.jpg',
+    url: 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(`
+      <svg xmlns="http://www.w3.org/2000/svg" width="800" height="600" viewBox="0 0 800 600">
+        <rect width="800" height="600" fill="#fbe8d6"/>
+        <circle cx="140" cy="140" r="60" fill="#f5c6d3"/>
+        <text x="50%" y="55%" font-family="Arial, sans-serif" font-size="36" fill="#6b4b5a" text-anchor="middle">Stock 1</text>
+      </svg>
+    `),
+  },
+  {
+    id: 'stock-2',
+    name: 'Stock2.jpg',
+    url: 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(`
+      <svg xmlns="http://www.w3.org/2000/svg" width="800" height="600" viewBox="0 0 800 600">
+        <rect width="800" height="600" fill="#e8f6f3"/>
+        <rect x="80" y="120" width="640" height="360" rx="24" fill="#cfe7e3"/>
+        <text x="50%" y="55%" font-family="Arial, sans-serif" font-size="36" fill="#386a66" text-anchor="middle">Stock 2</text>
+      </svg>
+    `),
+  },
+  {
+    id: 'stock-3',
+    name: 'Stock3.jpg',
+    url: 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(`
+      <svg xmlns="http://www.w3.org/2000/svg" width="800" height="600" viewBox="0 0 800 600">
+        <rect width="800" height="600" fill="#f6eef9"/>
+        <circle cx="600" cy="200" r="80" fill="#d6b3f0"/>
+        <text x="50%" y="55%" font-family="Arial, sans-serif" font-size="36" fill="#5a3b66" text-anchor="middle">Stock 3</text>
+      </svg>
+    `),
+  },
+  {
+    id: 'stock-4',
+    name: 'Stock4.jpg',
+    url: 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(`
+      <svg xmlns="http://www.w3.org/2000/svg" width="800" height="600" viewBox="0 0 800 600">
+        <rect width="800" height="600" fill="#fff3e8"/>
+        <path d="M0 480 Q200 360 400 480 T800 480 V600 H0Z" fill="#ffd2a8"/>
+        <text x="50%" y="50%" font-family="Arial, sans-serif" font-size="36" fill="#7a4a2b" text-anchor="middle">Stock 4</text>
+      </svg>
+    `),
+  },
+  {
+    id: 'stock-5',
+    name: 'Stock5.jpg',
+    url: 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(`
+      <svg xmlns="http://www.w3.org/2000/svg" width="800" height="600" viewBox="0 0 800 600">
+        <rect width="800" height="600" fill="#eaf3ff"/>
+        <circle cx="200" cy="420" r="70" fill="#bcd8ff"/>
+        <text x="50%" y="45%" font-family="Arial, sans-serif" font-size="36" fill="#2f4f7c" text-anchor="middle">Stock 5</text>
+      </svg>
+    `),
+  },
+  {
+    id: 'stock-6',
+    name: 'Stock6.jpg',
+    url: 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(`
+      <svg xmlns="http://www.w3.org/2000/svg" width="800" height="600" viewBox="0 0 800 600">
+        <rect width="800" height="600" fill="#f0fff6"/>
+        <circle cx="420" cy="320" r="90" fill="#bfe6d4"/>
+        <text x="50%" y="55%" font-family="Arial, sans-serif" font-size="36" fill="#2f6b52" text-anchor="middle">Stock 6</text>
+      </svg>
+    `),
+  },
 ]
 
 const currentPhotoPreview = computed(() => {
@@ -833,17 +899,18 @@ const placeCandle = () => {
 
 <template>
   <div class="asset-panel-root" :class="{ 'models-root': props.panelType === 'models' && showModelSubmenu }">
-    <aside class="asset-panel" :class="{ 'models-mode': props.panelType === 'models', 'media-mode': props.panelType === 'media' }">
+    <aside
+      class="asset-panel"
+      :class="{
+        'models-mode': props.panelType === 'models',
+        'media-mode': props.panelType === 'media',
+        'media-flow-mode': props.panelType === 'media' && mediaMode !== 'chooser',
+      }"
+    >
     <div class="panel-header">
       <div class="panel-heading">
         <h2>{{ panelHeading }}</h2>
           <p v-if="props.panelType !== 'media'">{{ panelCopy }}</p>
-      </div>
-
-      <div class="panel-actions">
-        <button type="button" class="close-panel-button" aria-label="Sluit paneel" @click="handleClosePanel">
-          ×
-        </button>
       </div>
     </div>
 
@@ -1461,16 +1528,21 @@ const placeCandle = () => {
 
 .asset-panel.media-mode {
   width: 260px;
-  max-height: calc(100vh - 120px);
+  max-height: calc(100vh - 200px);
   background: rgba(255, 255, 255, 0.46);
   border: 1px solid rgba(188, 152, 188, 0.25);
   box-shadow: 0 10px 22px rgba(48, 38, 78, 0.12);
   backdrop-filter: blur(6px);
 }
 
+.asset-panel.media-mode.media-flow-mode {
+  width: 400px;
+}
+
 .asset-panel-root {
   position: absolute;
-  left: 232px;
+  /* align panel to the same left edge as the left-toolbar card */
+  left: 20px;
   top: 50%;
   bottom: auto;
   transform: translateY(-50%);
@@ -1860,11 +1932,19 @@ const placeCandle = () => {
 }
 
 .asset-panel.media-mode .photo-card-shell {
-  padding: 16px;
+  padding: 20px;
   border-radius: 12px;
   background: rgba(255, 255, 255, 0.46);
   border: 1px solid rgba(188, 152, 188, 0.25);
   box-shadow: 0 10px 22px rgba(48, 38, 78, 0.12);
+  /* Keep sub-panels stacked within the main media panel */
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.asset-panel.media-mode .photo-flow-title {
+  gap: 8px;
 }
 
 .asset-panel.media-mode .photo-flow-title h3 {
@@ -1878,6 +1958,35 @@ const placeCandle = () => {
 .asset-panel.media-mode .sound-preset-detail,
 .asset-panel.media-mode .models-submenu-copy {
   font-size: 12px;
+}
+
+.asset-panel.media-mode .photo-flow-copy {
+  line-height: 1.6;
+}
+
+.asset-panel.media-mode .photo-source-switcher {
+  gap: 12px;
+}
+
+.asset-panel.media-mode .photo-upload-box {
+  gap: 12px;
+}
+
+.asset-panel.media-mode .gallery-grid {
+  gap: 12px;
+}
+
+.asset-panel.media-mode .gallery-photo-button {
+  gap: 10px;
+  padding: 10px 8px;
+}
+
+.asset-panel.media-mode .gallery-photo-button span {
+  line-height: 1.2;
+}
+
+.asset-panel.media-mode .family-action {
+  margin-top: 2px;
 }
 
 .room-theme-panel {
@@ -2282,7 +2391,7 @@ const placeCandle = () => {
 }
 
 .gallery-photo-button img {
-  height: 78px;
+  height: 90px;
 }
 
 .photo-preview-line {
@@ -2627,6 +2736,11 @@ input[type="file"][accept*="audio"] {
 
   .photo-flow-title h3 {
     font-size: 34px;
+  }
+
+  /* revert side-by-side to stacked on small screens */
+  .asset-panel.media-mode .photo-card-shell {
+    display: block;
   }
 }
 
