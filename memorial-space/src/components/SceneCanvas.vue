@@ -80,6 +80,7 @@ const adminViewMode = ref('edit') // 'edit' | 'moderator' | 'visitor'
 const showAdminViewMenu = ref(false)
 const showTopNavMenu = ref(false)
 const tutorialProfileMenuPinned = ref(false)
+const quickPanelSnapshot = ref(null)
 
 // initialize username from current user when available
 if (props.currentUser && props.currentUser.displayName) {
@@ -95,6 +96,15 @@ const effectiveRole = computed(() => {
 })
 
 const setVisitorPreviewMode = (enabled) => {
+  if (enabled) {
+    quickPanelSnapshot.value = {
+      showQuickPanel: showQuickPanel.value,
+      activePanel: activePanel.value,
+      quickPanelModelCategory: quickPanelModelCategory.value,
+      quickPanelMediaMode: quickPanelMediaMode.value,
+    }
+  }
+
   visitorPreviewMode.value = enabled
   showAdminViewMenu.value = false
   showQuickPanel.value = false
@@ -102,6 +112,14 @@ const setVisitorPreviewMode = (enabled) => {
   showAdminSettingsModal.value = false
   showTopNavMenu.value = false
   clearSceneSelection()
+
+  if (!enabled && quickPanelSnapshot.value) {
+    activePanel.value = quickPanelSnapshot.value.activePanel
+    quickPanelModelCategory.value = quickPanelSnapshot.value.quickPanelModelCategory
+    quickPanelMediaMode.value = quickPanelSnapshot.value.quickPanelMediaMode
+    showQuickPanel.value = quickPanelSnapshot.value.showQuickPanel
+    quickPanelSnapshot.value = null
+  }
 }
 
 const isAdmin = computed(() => props.currentUser?.role === 'admin')
@@ -149,6 +167,11 @@ watch(() => props.currentUser?.role, (role) => {
     showAdminViewMenu.value = false
     adminViewMode.value = 'edit'
     visitorPreviewMode.value = false
+    return
+  }
+
+  if (!showQuickPanel.value) {
+    showQuickPanel.value = true
   }
 })
 
@@ -234,9 +257,10 @@ watch(roomPrivacy, (nextPrivacy) => {
   }
 })
 const sceneObjects = ref([])
-const showQuickPanel = ref(false)
+const showQuickPanel = ref(props.currentUser?.role === 'editor')
 const activePanel = ref('media')
 const quickPanelModelCategory = ref('')
+const quickPanelMediaMode = ref('chooser')
 const soundSettings = ref({
   enabled: false,
   presetId: 'room-tone',
@@ -3648,6 +3672,7 @@ onBeforeUnmount(() => {
           :current-room-theme="roomTheme"
           :room-themes="roomThemePresets"
           :initial-model-category="quickPanelModelCategory"
+          :initial-media-mode="quickPanelMediaMode"
           :current-sound-settings="soundSettings"
           :is-admin="effectiveRole === 'admin'"
           @add-asset="handleAddAsset"
@@ -3655,6 +3680,7 @@ onBeforeUnmount(() => {
           @apply-sound="handleApplySound"
           @toggle-floor="toggleFloorVisibility"
           @close-panel="closeQuickPanel"
+          @update-media-mode="quickPanelMediaMode = $event"
           @place-photo="handlePlacePhoto"
           @place-audio="handlePlaceAudio"
           @place-video="handlePlaceVideo"
