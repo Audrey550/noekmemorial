@@ -28,6 +28,10 @@ const props = defineProps({
     type: String,
     default: '',
   },
+  initialMediaMode: {
+    type: String,
+    default: 'chooser',
+  },
   currentSoundSettings: {
     type: Object,
     default: () => ({
@@ -42,9 +46,9 @@ const props = defineProps({
   },
 })
 
-const emit = defineEmits(['add-asset', 'toggle-floor', 'close-panel', 'apply-room-theme', 'apply-sound', 'place-photo', 'place-message', 'place-candle', 'place-audio', 'place-video'])
+const emit = defineEmits(['add-asset', 'toggle-floor', 'close-panel', 'apply-room-theme', 'apply-sound', 'place-photo', 'place-message', 'place-candle', 'place-audio', 'place-video', 'update-media-mode'])
 
-const mediaMode = ref('chooser')
+const mediaMode = ref(props.initialMediaMode || 'chooser')
 const photoSourceMode = ref('gallery')
 const selectedPhoto = ref(null)
 const uploadedPhotos = ref([])
@@ -541,6 +545,16 @@ const backToMediaChooser = () => {
   mediaMode.value = 'chooser'
 }
 
+watch(() => props.initialMediaMode, (mode) => {
+  if (typeof mode === 'string' && mode) {
+    mediaMode.value = mode
+  }
+})
+
+watch(mediaMode, (mode) => {
+  emit('update-media-mode', mode)
+})
+
 const triggerFilePicker = () => {
   photoFileInput.value?.click()
 }
@@ -819,11 +833,11 @@ const placeCandle = () => {
 
 <template>
   <div class="asset-panel-root" :class="{ 'models-root': props.panelType === 'models' && showModelSubmenu }">
-    <aside class="asset-panel" :class="{ 'models-mode': props.panelType === 'models' }">
+    <aside class="asset-panel" :class="{ 'models-mode': props.panelType === 'models', 'media-mode': props.panelType === 'media' }">
     <div class="panel-header">
       <div class="panel-heading">
         <h2>{{ panelHeading }}</h2>
-        <p>{{ panelCopy }}</p>
+          <p v-if="props.panelType !== 'media'">{{ panelCopy }}</p>
       </div>
 
       <div class="panel-actions">
@@ -992,11 +1006,6 @@ const placeCandle = () => {
     </div>
 
     <div v-else-if="panelType === 'media' && mediaMode === 'chooser'" class="media-panel-stack">
-      <button type="button" class="asset-item media-main-button" @click="mediaMode = 'chooser'">
-        <span class="asset-icon">🖼️</span>
-        <span class="asset-name">Media</span>
-      </button>
-
       <div class="asset-grid media-chooser-grid media-secondary-list">
         <button
           v-for="option in mediaActionButtons"
@@ -1450,6 +1459,15 @@ const placeCandle = () => {
   overflow: hidden;
 }
 
+.asset-panel.media-mode {
+  width: 260px;
+  max-height: calc(100vh - 120px);
+  background: rgba(255, 255, 255, 0.46);
+  border: 1px solid rgba(188, 152, 188, 0.25);
+  box-shadow: 0 10px 22px rgba(48, 38, 78, 0.12);
+  backdrop-filter: blur(6px);
+}
+
 .asset-panel-root {
   position: absolute;
   left: 232px;
@@ -1485,6 +1503,21 @@ const placeCandle = () => {
   line-height: 0.9;
   color: #f7f4ff;
   margin: 0;
+}
+
+.asset-panel.media-mode .panel-header {
+  padding: 16px 16px 10px;
+  border-bottom: none;
+}
+
+.asset-panel.media-mode .panel-header h2 {
+  font-size: 36px;
+  font-weight: 700;
+  color: #1a1a1a;
+}
+
+.asset-panel.media-mode .panel-heading p {
+  display: none;
 }
 
 .panel-heading p {
@@ -1746,32 +1779,105 @@ const placeCandle = () => {
 .media-panel-stack {
   display: flex;
   flex-direction: column;
-  gap: 12px;
-  padding: 14px 18px 18px;
+  gap: 10px;
+  padding: 0 16px 16px;
   flex: 1;
   overflow-y: auto;
 }
 
 .media-main-button {
   width: 100%;
-  min-height: 64px;
+  min-height: 48px;
+  padding: 0 14px;
+  justify-content: center;
+  gap: 0;
+  border: 1px solid rgba(198, 180, 208, 0.72);
+  border-radius: 16px;
+  background: linear-gradient(180deg, rgba(252, 248, 244, 0.96), rgba(242, 236, 245, 0.96));
+  box-shadow: none;
+}
+
+.media-main-button .asset-icon {
+  display: flex;
+  width: auto;
+  height: auto;
+  margin-right: 12px;
+  font-size: 22px;
+  background: transparent;
+  color: inherit;
+}
+
+.media-main-button .asset-name {
+  font-family: 'Outfit', 'Segoe UI', sans-serif;
+  font-size: 16px;
+  font-weight: 700;
+  color: #111111;
 }
 
 .media-secondary-list {
   padding: 0;
-  gap: 8px;
+  gap: 10px;
 }
 
 .media-secondary-list .media-option-item {
   width: 100%;
-  padding: 12px 14px;
-  min-height: 54px;
+  min-height: 48px;
+  padding: 0 14px;
+  border: 1px solid rgba(198, 180, 208, 0.72);
+  border-radius: 16px;
+  background: linear-gradient(180deg, rgba(252, 248, 244, 0.96), rgba(242, 236, 245, 0.96));
+  box-shadow: none;
+  justify-content: flex-start;
 }
 
 .media-secondary-list .media-option-item .asset-icon {
-  width: 34px;
-  height: 34px;
-  font-size: 20px;
+  width: auto;
+  height: auto;
+  font-size: 22px;
+  background: transparent;
+  color: inherit;
+}
+
+.media-secondary-list .media-option-item .asset-name {
+  font-size: 16px;
+  font-weight: 700;
+  color: #111111;
+}
+
+.asset-panel.media-mode .family-action {
+  min-height: 48px;
+  padding: 0 14px;
+  border-radius: 16px;
+  border: 1px solid rgba(198, 180, 208, 0.72);
+  background: linear-gradient(180deg, rgba(252, 248, 244, 0.96), rgba(242, 236, 245, 0.96));
+  color: #111111;
+}
+
+.asset-panel.media-mode .back-link {
+  padding: 0;
+  font-size: 14px;
+  color: rgba(17, 17, 17, 0.82);
+}
+
+.asset-panel.media-mode .photo-card-shell {
+  padding: 16px;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.46);
+  border: 1px solid rgba(188, 152, 188, 0.25);
+  box-shadow: 0 10px 22px rgba(48, 38, 78, 0.12);
+}
+
+.asset-panel.media-mode .photo-flow-title h3 {
+  font-size: 28px;
+}
+
+.asset-panel.media-mode .photo-flow-title p,
+.asset-panel.media-mode .photo-flow-copy,
+.asset-panel.media-mode .photo-field,
+.asset-panel.media-mode .audio-formats,
+.asset-panel.media-mode .sound-preset-detail,
+.asset-panel.media-mode .models-submenu-copy {
+  font-size: 12px;
 }
 
 .room-theme-panel {
@@ -2062,7 +2168,7 @@ const placeCandle = () => {
 .back-link {
   border: none;
   background: transparent;
-  color: #f8f6ff;
+  color: #1a1a1a;
   font-family: 'Outfit', 'Segoe UI', sans-serif;
   font-size: 15px;
   font-weight: 700;
@@ -2076,7 +2182,9 @@ const placeCandle = () => {
   gap: 14px;
   padding: 22px; /* increased padding for more breathing room */
   border-radius: 24px;
-  background: rgba(255, 255, 255, 0.28);
+  background: rgba(255, 255, 255, 0.94);
+  border: 1px solid rgba(54, 42, 92, 0.08);
+  box-shadow: 0 12px 28px rgba(54, 42, 92, 0.08);
   color: #111111;
 }
 
@@ -2092,7 +2200,7 @@ const placeCandle = () => {
   font-size: 44px;
   font-weight: 400;
   line-height: 0.9;
-  color: #f8f6ff;
+  color: #1a1a1a;
 }
 
 .photo-flow-title p,
@@ -2161,8 +2269,8 @@ const placeCandle = () => {
 }
 
 .gallery-photo-button.selected {
-  border-color: #5f4abf;
-  box-shadow: 0 0 0 2px rgba(95, 74, 191, 0.18);
+  border-color: #1a1a1a;
+  box-shadow: 0 0 0 2px rgba(26, 26, 26, 0.14);
 }
 
 .gallery-photo-button img,
@@ -2349,7 +2457,7 @@ const placeCandle = () => {
 .audio-waveform {
   width: 100%;
   height: 50px;
-  color: rgba(125, 95, 161, 0.6);
+  color: rgba(26, 26, 26, 0.55);
 }
 
 .audio-formats {
@@ -2410,9 +2518,9 @@ const placeCandle = () => {
 }
 
 .audio-list-item.selected {
-  border-color: #5f4abf;
-  background: rgba(125, 95, 161, 0.08);
-  box-shadow: 0 0 0 2px rgba(95, 74, 191, 0.18);
+  border-color: #1a1a1a;
+  background: rgba(26, 26, 26, 0.04);
+  box-shadow: 0 0 0 2px rgba(26, 26, 26, 0.14);
 }
 
 .audio-icon {
@@ -2425,7 +2533,7 @@ const placeCandle = () => {
 }
 
 .checkmark {
-  color: #7d5fa1;
+  color: #1a1a1a;
   font-weight: 700;
 }
 
