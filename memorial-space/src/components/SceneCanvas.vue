@@ -217,7 +217,7 @@ const inviteRoleOptions = computed(() => {
 })
 
 const accountSettingsLabel = computed(() => {
-  return props.currentUser?.role === 'admin' ? 'Beheerdersinstellingen' : 'Accountinstellingen'
+  return 'Accountinstellingen'
 })
 
 const roomSwitcherRooms = computed(() => {
@@ -3634,7 +3634,7 @@ onBeforeUnmount(() => {
       <canvas ref="canvasRef" class="scene-canvas" aria-label="3D herdenkingsruimte"></canvas>
 
       <aside v-if="effectiveRole !== 'viewer'" class="left-toolbar vertical-center" aria-label="Acties en scènebeheer">
-        <div id="asset-panel" class="left-toolbar-card">
+        <div id="asset-panel" class="left-toolbar-card" v-if="effectiveRole === 'admin'">
           <h3 class="left-toolbar-title">{{ leftToolbarTitle }}</h3>
 
           <nav class="action-dock column" aria-label="Snelle acties">
@@ -4011,7 +4011,7 @@ onBeforeUnmount(() => {
       <!-- Admin Settings Modal (placeholder) -->
       <div v-if="showAdminSettingsModal" class="modal-backdrop" role="dialog" aria-modal="true">
         <div id="admin-settings-modal-card" class="modal-card">
-          <h3 id="admin-settings-modal-title">Beheerdersinstellingen</h3>
+          <h3 id="admin-settings-modal-title">Accountinstellingen</h3>
           <div style="display:flex;align-items:center;gap:12px;margin-top:12px">
             <div style="width:56px;height:56px;border-radius:28px;overflow:hidden;background:#ddd">
               <img v-if="props.currentUser && props.currentUser.avatar" :src="props.currentUser.avatar" style="width:100%;height:100%;object-fit:cover" />
