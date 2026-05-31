@@ -220,8 +220,33 @@ const accountSettingsLabel = computed(() => {
   return 'Accountinstellingen'
 })
 
+const getUnreadModeratorNotificationCount = (roomId) => {
+  try {
+    const raw = localStorage.getItem(`audreyModeratorNotifications_${roomId || 'default'}`)
+    if (!raw) return 0
+    const entries = JSON.parse(raw)
+    return Array.isArray(entries) ? entries.filter(entry => !entry.read).length : 0
+  } catch (e) {
+    return 0
+  }
+}
+
 const roomSwitcherRooms = computed(() => {
-  return Array.isArray(props.accessibleRooms) ? props.accessibleRooms : []
+  void moderatorNotificationVersion.value
+  return (Array.isArray(props.accessibleRooms) ? props.accessibleRooms : []).map((room) => ({
+    ...room,
+    unreadModeratorNotifications: typeof room.unreadModeratorNotifications === 'number'
+      ? room.unreadModeratorNotifications
+      : getUnreadModeratorNotificationCount(room.id),
+  }))
+})
+
+  /*if (userNotificationStorageListener) {
+    window.removeEventListener('storage', userNotificationStorageListener)
+    userNotificationStorageListener = null
+  }*/
+const totalUnreadModeratorNotifications = computed(() => {
+  return roomSwitcherRooms.value.reduce((total, room) => total + (room.unreadModeratorNotifications || 0), 0)
 })
 
 watch(effectiveRole, (role) => {
@@ -238,6 +263,7 @@ watch(effectiveRole, (role) => {
 
 watch(() => props.currentUser, (nu) => {
   if (nu && nu.displayName) username.value = nu.displayName
+  loadUserNotifications()
 })
 // reload room metadata when roomId changes
 watch(() => props.roomId, () => {
@@ -268,6 +294,7 @@ const soundSettings = ref({
 })
 const showFloor = ref(true)
 const showProfileMenu = ref(false)
+const showUserNotificationPanel = ref(false)
 const hoveredPhoto = ref(null)
 const hoveredPhotoPosition = ref({ x: 0, y: 0 })
 const selectedSceneObjectId = ref(null)
@@ -276,11 +303,14 @@ const selectedSceneObjectType = ref('')
 const selectedSceneObjectLabel = ref('')
 const selectedSceneObjectColor = ref('#3c3c3c')
 const newObjectMessage = ref('')
+const moderatorNotifications = ref([])
+const moderatorNotificationVersion = ref(0)
 const transformStep = 0.2
 const rotateStep = Math.PI / 12
 const scaleStep = 0.1
 const assetModels = ref([])
 const hideDeleteHint = ref(false)
+const userNotifications = ref([])
 const undoStack = ref([])
 const redoStack = ref([])
 const canUndo = computed(() => undoStack.value.length > 0)
@@ -290,6 +320,35 @@ const maxUndoSteps = 40
 const showResetRoomModal = ref(false)
 const canEditSceneObjects = computed(() => effectiveRole.value === 'admin' || effectiveRole.value === 'editor')
 const leftToolbarTitle = computed(() => effectiveRole.value === 'editor' ? 'Media' : 'Assets')
+const moderatorNotificationStorageKey = () => `audreyModeratorNotifications_${props.roomId || 'default'}`
+const moderatorNotificationUnreadCount = computed(() => moderatorNotifications.value.filter(entry => !entry.read).length)
+const userNotificationStorageKey = () => {
+  const key = getCurrentUserKey()
+  return `audreyNotifications_${key || 'default'}`
+}
+const unreadUserNotificationCount = computed(() => userNotifications.value.filter(entry => !entry.read).length)
+const notificationKindLabel = (kind) => {
+  switch (kind) {
+    case 'room_invite': return 'Uitnodiging'
+    case 'comment': return 'Opmerking'
+    case 'candle_removed': return 'Moderatie'
+    case 'placement': return 'Nieuwe plaatsing'
+    default: return 'Melding'
+  }
+}
+const notificationShortTime = (timestamp) => {
+  if (!timestamp) return ''
+  try {
+    return new Date(timestamp).toLocaleString('nl-NL', {
+      day: '2-digit',
+      month: 'short',
+      hour: '2-digit',
+      minute: '2-digit',
+    })
+  } catch (e) {
+    return ''
+  }
+}
 // Initialize from localStorage if available
 try {
   const _saved = localStorage.getItem('memorial_hideDeleteHint')
@@ -323,6 +382,7 @@ let raycaster = new THREE.Raycaster()
 let pointer = new THREE.Vector2()
 let panelSwitchTimer = null
 let soundAudioContext = null
+let userNotificationStorageListener = null
 let activeSoundDisposers = []
 let activeSoundTimers = []
 const topNavMenuElement = ref(null)
@@ -1260,6 +1320,54 @@ const deserializeSceneState = async (jsonString) => {
           sceneObjects.value[sceneObjects.value.length - 1].hidden = true
           try { messageGroup.visible = false } catch (e) {}
         }
+      } else if (objData.assetId === 'candle' && objData.candleData) {
+        const candleGroup = new THREE.Group()
+
+        const baseGeometry = new THREE.CylinderGeometry(0.15, 0.15, 0.05, 32)
+        const baseMaterial = new THREE.MeshStandardMaterial({ color: 0xf5f5f0, roughness: 0.8 })
+        const base = new THREE.Mesh(baseGeometry, baseMaterial)
+        base.castShadow = true
+        base.receiveShadow = true
+        base.position.y = 0.025
+        candleGroup.add(base)
+
+        let candleHeight = 0.4
+        if (objData.candleData.size?.id === 'small') candleHeight = 0.3
+        if (objData.candleData.size?.id === 'large') candleHeight = 0.6
+
+        const candleGeometry = new THREE.CylinderGeometry(0.08, 0.08, candleHeight, 16)
+        const candleMaterial = new THREE.MeshStandardMaterial({
+          color: 0xfffacd,
+          emissive: 0xffeb3b,
+          emissiveIntensity: 0.3,
+        })
+        const candle = new THREE.Mesh(candleGeometry, candleMaterial)
+        candle.castShadow = true
+        candle.receiveShadow = true
+        candle.position.y = 0.05 + candleHeight / 2
+        candleGroup.add(candle)
+
+        const flameGeometry = new THREE.ConeGeometry(0.04, 0.15, 8)
+        const flameMaterial = new THREE.MeshStandardMaterial({
+          color: 0xffa500,
+          emissive: 0xffff00,
+          emissiveIntensity: 0.8,
+        })
+        const flame = new THREE.Mesh(flameGeometry, flameMaterial)
+        flame.position.y = 0.05 + candleHeight + 0.1
+        candleGroup.add(flame)
+
+        candleGroup.position.set(objData.position.x, objData.position.y, objData.position.z)
+        candleGroup.rotation.set(objData.rotation.x, objData.rotation.y, objData.rotation.z)
+        candleGroup.scale.set(objData.scale.x, objData.scale.y, objData.scale.z)
+        room.add(candleGroup)
+        createSceneObjectRecord(candleGroup, objData.assetId, { candleData: objData.candleData })
+        sceneObjects.value[sceneObjects.value.length - 1].id = objData.id
+        candleGroup.userData.sceneObjectId = objData.id
+        if (objData.hidden) {
+          sceneObjects.value[sceneObjects.value.length - 1].hidden = true
+          try { candleGroup.visible = false } catch (e) {}
+        }
       } else if (objData.assetId && colorableAssetIds.has(objData.assetId)) {
         let model = null
 
@@ -1559,6 +1667,7 @@ const handlePlaceAudio = (audioData) => {
   }
   pushUndoSnapshot()
   placeAudioInRoom(audioData)
+  logModeratorPlacement('audio', audioData?.title || 'Audio toegevoegd', audioData?.text || '')
   persistCurrentRoomScene()
 }
 
@@ -1570,12 +1679,14 @@ const handlePlaceVideo = (videoData) => {
   }
   pushUndoSnapshot()
   placeVideoInRoom(videoData)
+  logModeratorPlacement('video', videoData?.title || 'Video toegevoegd', videoData?.text || '')
   persistCurrentRoomScene()
 }
 
 const createSceneObjectRecord = (object, assetId, payload = {}, options = {}) => {
   const id = sceneObjectIdCounter++
   object.userData.sceneObjectId = id
+  Object.assign(object.userData, payload)
 
   const record = {
     id,
@@ -1743,6 +1854,7 @@ const addObjectToScene = async (assetId) => {
   room.add(model)
 
   createSceneObjectRecord(model, assetId)
+  logModeratorPlacement('object', asset?.name || assetId || 'Object toegevoegd', '')
 }
 
 // Handle `add-asset` emitted from AssetPanel
@@ -1769,6 +1881,7 @@ const toggleFloorVisibility = () => {
 }
 
 const openProfileMenu = () => {
+  showUserNotificationPanel.value = false
   showProfileMenu.value = true
 }
 
@@ -1777,7 +1890,35 @@ const closeProfileMenu = () => {
 }
 
 const toggleProfileMenu = () => {
+  showUserNotificationPanel.value = false
   showProfileMenu.value = !showProfileMenu.value
+}
+
+const openUserNotificationPanel = () => {
+  showProfileMenu.value = false
+  showUserNotificationPanel.value = true
+  markUserNotificationsRead()
+}
+
+const closeUserNotificationPanel = () => {
+  showUserNotificationPanel.value = false
+}
+
+const toggleUserNotificationPanel = () => {
+  showProfileMenu.value = false
+  showUserNotificationPanel.value = !showUserNotificationPanel.value
+  if (showUserNotificationPanel.value) {
+    markUserNotificationsRead()
+  }
+}
+
+const handleNotificationAction = (entry) => {
+  if (entry?.actionRoomId) {
+    emit('room-selected', entry.actionRoomId)
+  } else if (entry?.roomId) {
+    emit('room-selected', entry.roomId)
+  }
+  showUserNotificationPanel.value = false
 }
 
 const openRoomSettings = () => { showRoomSettingsModal.value = true; showProfileMenu.value = false }
@@ -1995,8 +2136,42 @@ const clearSceneSelection = () => {
   clearSelectionHelper()
 }
 
+const formatHoverTimestamp = (value) => {
+  if (!value) return ''
+
+  const parsedDate = new Date(value)
+  if (Number.isNaN(parsedDate.getTime())) return ''
+
+  return parsedDate.toLocaleString('nl-BE', {
+    dateStyle: 'medium',
+    timeStyle: 'short',
+  })
+}
+
+// Date-only formatter for candle hover (no time)
+const formatHoverDate = (value) => {
+  if (!value) return ''
+
+  const parsedDate = new Date(value)
+  if (Number.isNaN(parsedDate.getTime())) return ''
+
+  return parsedDate.toLocaleDateString('nl-BE', {
+    dateStyle: 'medium',
+  })
+}
+
 const getSelectableRootObjects = () => {
+  const me = props.currentUser?.id || props.currentUser?.uid || props.currentUser?.sub || props.currentUser?.email || props.currentUser?.displayName || null
   return sceneObjects.value
+    .filter(entry => {
+      if (entry.assetId === 'candle') {
+        // allow selecting candles if the creator is the current user or the current user is admin
+        const cid = entry.candleData?.creatorId || null
+        return isAdmin.value || (cid && me && cid === me)
+      }
+
+      return true
+    })
     .map(entry => entry.object)
     .filter(Boolean)
 }
@@ -2086,6 +2261,322 @@ const removeSelectedSceneObject = () => {
   persistCurrentRoomScene()
 }
 
+const normalizeModeratorNotification = (entry) => ({
+  id: entry.id,
+  kind: entry.kind || 'placement',
+  assetId: entry.assetId || 'item',
+  title: entry.title || 'Nieuwe plaatsing',
+  subtitle: entry.subtitle || '',
+  actor: entry.actor || 'Onbekend',
+  roomId: entry.roomId || (props.roomId || 'default'),
+  timestamp: entry.timestamp || new Date().toISOString(),
+  read: !!entry.read,
+  source: entry.source || 'local',
+})
+
+const saveModeratorNotifications = () => {
+  try {
+    localStorage.setItem(moderatorNotificationStorageKey(), JSON.stringify(moderatorNotifications.value))
+  } catch (e) {}
+  moderatorNotificationVersion.value += 1
+}
+
+const loadModeratorNotifications = () => {
+  try {
+    const raw = localStorage.getItem(moderatorNotificationStorageKey())
+    moderatorNotifications.value = raw ? JSON.parse(raw).map(normalizeModeratorNotification) : []
+  } catch (e) {
+    moderatorNotifications.value = []
+  }
+  moderatorNotificationVersion.value += 1
+}
+
+const addModeratorNotification = (entry) => {
+  const normalized = normalizeModeratorNotification(entry)
+  if (moderatorNotifications.value.some(item => item.id === normalized.id)) {
+    return
+  }
+
+  moderatorNotifications.value = [normalized, ...moderatorNotifications.value].slice(0, 100)
+  saveModeratorNotifications()
+}
+
+const markModeratorNotificationsRead = () => {
+  if (!moderatorNotifications.value.length) return
+  moderatorNotifications.value = moderatorNotifications.value.map(entry => ({ ...entry, read: true }))
+  saveModeratorNotifications()
+}
+
+const logModeratorPlacement = (assetId, title, subtitle = '') => {
+  const actor = props.currentUser?.displayName || props.currentUser?.email || 'Gast'
+  const roomId = props.roomId || 'default'
+  const timestamp = new Date().toISOString()
+  const analyticsEntry = logEvent('placement_created', {
+    assetId,
+    title,
+    subtitle,
+    actor,
+    roomId,
+    timestamp,
+  })
+  const notificationId = analyticsEntry?.id || `mod_${roomId}_${Date.now()}_${Math.floor(Math.random() * 1000)}`
+
+  addModeratorNotification({
+    id: notificationId,
+    kind: 'placement',
+    assetId,
+    title,
+    subtitle,
+    actor,
+    roomId,
+    timestamp,
+    read: false,
+    source: 'local',
+  })
+}
+
+const syncModeratorNotificationsFromRemote = async () => {
+  const supabase = getSupabase()
+  if (!supabase) return
+
+  try {
+    const roomId = props.roomId || 'default'
+    const { data } = await supabase
+      .from('events')
+      .select('id,name,timestamp,props')
+      .eq('name', 'placement_created')
+      .order('timestamp', { ascending: false })
+      .limit(50)
+
+    (data || []).forEach((row) => {
+      const propsPayload = row.props || {}
+      if ((propsPayload.roomId || roomId) !== roomId) return
+
+      addModeratorNotification({
+        id: row.id,
+        kind: 'placement',
+        assetId: propsPayload.assetId || 'item',
+        title: propsPayload.title || 'Nieuwe plaatsing',
+        subtitle: propsPayload.subtitle || '',
+        actor: propsPayload.actor || 'Onbekend',
+        roomId,
+        timestamp: row.timestamp || propsPayload.timestamp || new Date().toISOString(),
+        read: false,
+        source: 'remote',
+      })
+    })
+  } catch (e) {
+    // ignore missing table / permissions / offline
+  }
+}
+
+let moderatorNotificationPollTimer = null
+
+watch(isModeratorMode, async (active) => {
+  if (active) {
+    loadModeratorNotifications()
+    try {
+      localStorage.setItem(`audreyModeratorSeen_${props.roomId || 'default'}`, new Date().toISOString())
+    } catch (e) {}
+    await syncModeratorNotificationsFromRemote()
+    markModeratorNotificationsRead()
+
+    if (moderatorNotificationPollTimer) {
+      clearInterval(moderatorNotificationPollTimer)
+    }
+
+    moderatorNotificationPollTimer = setInterval(() => {
+      syncModeratorNotificationsFromRemote()
+    }, 15000)
+  } else if (moderatorNotificationPollTimer) {
+    clearInterval(moderatorNotificationPollTimer)
+    moderatorNotificationPollTimer = null
+  }
+}, { immediate: true })
+
+// Admin moderation: modal state and helpers for deletion with reason
+const showAdminDeleteModal = ref(false)
+const adminDeleteReason = ref('')
+const adminDeleteTargetRecordId = ref(null)
+const adminDeleteTargetOwnerId = ref(null)
+
+const getCurrentUserKey = () => props.currentUser?.id || props.currentUser?.uid || props.currentUser?.sub || props.currentUser?.email || props.currentUser?.displayName || null
+
+const saveModerationLogEntry = (entry) => {
+  try {
+    const key = `audreyModerationLog_${props.roomId || 'default'}`
+    const raw = localStorage.getItem(key)
+    const arr = raw ? JSON.parse(raw) : []
+    arr.push(entry)
+    localStorage.setItem(key, JSON.stringify(arr))
+  } catch (e) {
+    console.warn('Failed to save moderation log', e)
+  }
+}
+
+const normalizeUserNotification = (entry) => ({
+  id: entry?.id || `notif_${Date.now()}_${Math.floor(Math.random() * 1000)}`,
+  kind: entry?.kind || entry?.type || 'info',
+  title: entry?.title || notificationKindLabel(entry?.kind || entry?.type || 'info'),
+  message: entry?.message || entry?.reason || entry?.subtitle || '',
+  roomId: entry?.roomId || props.roomId || null,
+  roomName: entry?.roomName || roomName.value || '',
+  actor: entry?.actor || entry?.from || '',
+  actionLabel: entry?.actionLabel || '',
+  actionRoomId: entry?.actionRoomId || entry?.roomId || null,
+  timestamp: entry?.timestamp || new Date().toISOString(),
+  read: Boolean(entry?.read),
+})
+
+const saveUserNotifications = () => {
+  try {
+    localStorage.setItem(userNotificationStorageKey(), JSON.stringify(userNotifications.value))
+  } catch (e) {
+    console.warn('Failed to save user notifications', e)
+  }
+}
+
+const loadUserNotifications = () => {
+  try {
+    const raw = localStorage.getItem(userNotificationStorageKey())
+    userNotifications.value = raw ? JSON.parse(raw).map(normalizeUserNotification) : []
+  } catch (e) {
+    userNotifications.value = []
+  }
+}
+
+const markUserNotificationsRead = () => {
+  if (!userNotifications.value.length) return
+  userNotifications.value = userNotifications.value.map(entry => ({ ...entry, read: true }))
+  saveUserNotifications()
+}
+
+const notifyUser = (userId, payload) => {
+  if (!userId) return
+  try {
+    const key = `audreyNotifications_${userId}`
+    const raw = localStorage.getItem(key)
+    const arr = raw ? JSON.parse(raw) : []
+    arr.push(normalizeUserNotification(payload))
+    localStorage.setItem(key, JSON.stringify(arr))
+    if (userId === getCurrentUserKey()) {
+      loadUserNotifications()
+    }
+  } catch (e) {
+    console.warn('Failed to write user notification', e)
+  }
+}
+
+const requestDeleteSelectedSceneObject = () => {
+  const rec = selectedSceneObject.value
+  if (!rec) return
+
+  const me = getCurrentUserKey()
+  const owner = rec.candleData?.creatorId || null
+
+  // If it's a candle and current user is admin and not the owner, require reason
+  if (rec.assetId === 'candle' && isAdmin.value && owner && owner !== me) {
+    adminDeleteTargetRecordId.value = rec.id
+    adminDeleteTargetOwnerId.value = owner
+    adminDeleteReason.value = ''
+    showAdminDeleteModal.value = true
+    return
+  }
+
+  // fallback: proceed to immediate deletion
+  removeSelectedSceneObject()
+}
+
+const adminConfirmDelete = () => {
+  const reason = (adminDeleteReason.value || '').trim()
+  if (!reason) {
+    showNotification('Reden is verplicht', 'error')
+    return
+  }
+
+  const rec = selectedSceneObject.value
+  if (!rec) {
+    showAdminDeleteModal.value = false
+    return
+  }
+
+  const adminId = getCurrentUserKey()
+  const adminName = props.currentUser?.displayName || props.currentUser?.email || 'Beheerder'
+  const ownerId = adminDeleteTargetOwnerId.value || rec.candleData?.creatorId || null
+  const entry = {
+    id: Date.now(),
+    roomId: props.roomId || 'default',
+    adminId,
+    adminName,
+    candleRecordId: rec.id,
+    ownerId,
+    reason,
+    timestamp: new Date().toISOString(),
+  }
+
+  saveModerationLogEntry(entry)
+
+  // notify owner via localStorage inbox
+  if (ownerId) {
+    notifyUser(ownerId, {
+      type: 'candle_removed',
+      from: adminName,
+      candleRecordId: rec.id,
+      reason,
+      timestamp: entry.timestamp,
+    })
+  }
+
+  // perform deletion
+  removeSelectedSceneObject()
+  showAdminDeleteModal.value = false
+  showNotification('Kaars verwijderd', 'success')
+}
+
+// Editing state for candle inspector
+const editCandleMessage = ref('')
+const editCandleSize = ref(null)
+
+watch(selectedSceneObject, (rec) => {
+  if (!rec || rec.assetId !== 'candle') {
+    editCandleMessage.value = ''
+    editCandleSize.value = null
+    return
+  }
+
+  editCandleMessage.value = rec.candleData?.message || ''
+  editCandleSize.value = rec.candleData?.size?.id || (rec.candleData?.size ? rec.candleData.size : null)
+})
+
+const applyCandleEdits = () => {
+  const rec = selectedSceneObject.value
+  if (!rec || rec.assetId !== 'candle') return
+
+  pushUndoSnapshot()
+
+  // update data
+  rec.candleData = {
+    ...rec.candleData,
+    message: editCandleMessage.value,
+    size: { id: editCandleSize.value, label: editCandleSize.value === 'small' ? 'Klein' : editCandleSize.value === 'large' ? 'Groot' : 'Gemiddeld' },
+  }
+
+  // apply a simple scale change to the object for size change
+  try {
+    const obj = rec.object
+    if (obj) {
+      const scaleMap = { small: 0.9, medium: 1.0, large: 1.25 }
+      const s = scaleMap[editCandleSize.value] || 1.0
+      obj.scale.set(s, s, s)
+    }
+  } catch (e) {
+    console.warn('Failed to apply candle size change', e)
+  }
+
+  persistCurrentRoomScene()
+  showNotification('Kaars bijgewerkt', 'success', 1600)
+}
+
 const addMessageToSelectedObject = (text) => {
   if (!selectedSceneObject.value || !text) return
   const rec = selectedSceneObject.value
@@ -2134,14 +2625,57 @@ const applyTransformToSelectedObject = ({ moveX = 0, moveY = 0, moveZ = 0, rotat
   persistCurrentRoomScene()
 }
 
-const getPhotoDataFromObject = (object) => {
+const getHoverObjectDataFromObject = (object) => {
   let currentObject = object
 
   while (currentObject) {
-    if (currentObject.userData?.photoData) return currentObject.userData.photoData
-    if (currentObject.userData?.audioData) return currentObject.userData.audioData
-    if (currentObject.userData?.videoData) return currentObject.userData.videoData
-    if (currentObject.userData?.messageData) return currentObject.userData.messageData
+    if (currentObject.userData?.photoData) {
+      const photoData = currentObject.userData.photoData
+      return {
+        title: photoData.title || 'Foto',
+        text: photoData.text || 'Geen extra tekst toegevoegd.',
+      }
+    }
+
+    if (currentObject.userData?.audioData) {
+      const audioData = currentObject.userData.audioData
+      return {
+        title: audioData.title || 'Audio',
+        text: audioData.text || 'Geen extra tekst toegevoegd.',
+      }
+    }
+
+    if (currentObject.userData?.videoData) {
+      const videoData = currentObject.userData.videoData
+      return {
+        title: videoData.title || 'Video',
+        text: videoData.text || 'Geen extra tekst toegevoegd.',
+      }
+    }
+
+    if (currentObject.userData?.messageData) {
+      const messageData = currentObject.userData.messageData
+      return {
+        title: 'Bericht',
+        text: messageData.message || 'Geen bericht toegevoegd.',
+      }
+    }
+
+    if (currentObject.userData?.candleData) {
+      const candleData = currentObject.userData.candleData
+      const sizeLabel = candleData.size?.label
+        || (candleData.size?.id === 'small' ? 'Klein' : candleData.size?.id === 'large' ? 'Groot' : 'Gemiddeld')
+      const placedDate = formatHoverDate(candleData.placedAt)
+      return {
+        title: `Boodschap van ${candleData.name || 'onbekend'}`,
+        text: candleData.message || 'Geen boodschap toegevoegd.',
+        kind: 'candle',
+        sizeLabelTitle: 'Grootte:',
+        sizeLabelValue: sizeLabel,
+        placedDateLabelTitle: 'Datum:',
+        placedDateLabelValue: placedDate || '',
+      }
+    }
 
     currentObject = currentObject.parent
   }
@@ -2160,7 +2694,7 @@ const handleCanvasPointerMove = (event) => {
 
   raycaster.setFromCamera(pointer, camera)
   const intersections = raycaster.intersectObjects(room.children, true)
-  const hoveredIntersection = intersections.find(intersection => getPhotoDataFromObject(intersection.object))
+  const hoveredIntersection = intersections.find(intersection => getHoverObjectDataFromObject(intersection.object))
   const selectableRoots = canEditSceneObjects.value ? getSelectableRootObjects() : []
   const selectableIntersection = selectableRoots.length
     ? raycaster.intersectObjects(selectableRoots, true).find(intersection => findSceneObjectRecord(intersection.object))
@@ -2171,7 +2705,7 @@ const handleCanvasPointerMove = (event) => {
   if (!hoveredIntersection) {
     clearHoveredPhoto()
   } else {
-    hoveredPhoto.value = getPhotoDataFromObject(hoveredIntersection.object)
+    hoveredPhoto.value = getHoverObjectDataFromObject(hoveredIntersection.object)
     hoveredPhotoPosition.value = {
       x: event.clientX - rect.left + 16,
       y: event.clientY - rect.top + 16,
@@ -2707,6 +3241,7 @@ const placePhotoInRoom = (photoData) => {
   room.add(photoCard)
 
   createSceneObjectRecord(photoCard, 'photo', { photoData })
+  logModeratorPlacement('photo', photoData?.title || 'Foto toegevoegd', photoData?.text || '')
 }
 
 const handlePlaceMessage = (messageData) => {
@@ -2722,6 +3257,7 @@ const handlePlaceMessage = (messageData) => {
   room.add(messageGroup)
 
   createSceneObjectRecord(messageGroup, 'message', { messageData })
+  logModeratorPlacement('message', 'Bericht toegevoegd', messageData?.message || '')
   persistCurrentRoomScene()
 }
 
@@ -2775,7 +3311,9 @@ const handlePlaceCandle = (candleData) => {
   candleGroup.position.set(Math.random() * 2 - 1, 0.05, Math.random() * 2 - 1)
   room.add(candleGroup)
 
-  createSceneObjectRecord(candleGroup, 'candle', { candleData })
+  const creatorId = props.currentUser?.id || props.currentUser?.uid || props.currentUser?.sub || props.currentUser?.email || props.currentUser?.displayName || null
+  createSceneObjectRecord(candleGroup, 'candle', { candleData: { ...candleData, placedAt: new Date().toISOString(), creatorId } })
+  logModeratorPlacement('candle', `Kaars geplaatst door ${candleData?.name || 'onbekend'}`, candleData?.message || '')
   persistCurrentRoomScene()
 }
 
@@ -2788,6 +3326,16 @@ onMounted(() => {
 
   // load room metadata for privacy/invite demo
   loadRoomMeta()
+
+  loadUserNotifications()
+
+  userNotificationStorageListener = (event) => {
+    if (!event || event.key === userNotificationStorageKey() || event.key === null) {
+      loadUserNotifications()
+    }
+  }
+
+  window.addEventListener('storage', userNotificationStorageListener)
 
   try {
     const storedSoundSettings = localStorage.getItem('audreySoundSettings')
@@ -3373,6 +3921,25 @@ onBeforeUnmount(() => {
         <img class="brand-mark-image" :src="noekLogoTextUrl" alt="Noek" />
       </div>
 
+      <!-- Admin delete confirmation modal (required reason) -->
+      <div v-if="showAdminDeleteModal" class="modal-backdrop" role="dialog" aria-modal="true" @click.self="showAdminDeleteModal = false">
+        <div class="modal-card room-settings-modal-card">
+          <div class="modal-card-header">
+            <h3>Bevestig verwijdering</h3>
+            <button type="button" class="modal-close-button" @click="showAdminDeleteModal = false">×</button>
+          </div>
+
+          <p>Je staat op het punt een andermans kaars te verwijderen. Geef kort de reden op (verplicht):</p>
+
+          <textarea v-model="adminDeleteReason" rows="4" style="width:100%; padding:8px; border-radius:8px; border:1px solid rgba(0,0,0,0.08); margin-top:8px"></textarea>
+
+          <div style="margin-top:12px; display:flex; gap:8px; justify-content:flex-end">
+            <button type="button" class="room-settings-secondary-button" @click="showAdminDeleteModal = false">Annuleren</button>
+            <button type="button" class="reset-room-primary-button" @click="adminConfirmDelete">Bevestig verwijdering</button>
+          </div>
+        </div>
+      </div>
+
       <div class="top-bar-controls">
         <button
           type="button"
@@ -3568,6 +4135,19 @@ onBeforeUnmount(() => {
           <div ref="profileMenuElement" class="profile-menu-wrap">
             <button
               type="button"
+              class="notification-bell"
+              :class="{ active: showUserNotificationPanel }"
+              aria-haspopup="dialog"
+              :aria-expanded="showUserNotificationPanel"
+              aria-label="Open meldingen"
+              title="Open meldingen"
+              @click="toggleUserNotificationPanel"
+            >
+              <span class="notification-bell-icon">🔔</span>
+              <span v-if="unreadUserNotificationCount > 0" class="notification-bell-badge">{{ unreadUserNotificationCount }}</span>
+            </button>
+            <button
+              type="button"
               class="avatar"
               :style="{ backgroundImage: props.currentUser && props.currentUser.avatar ? `url(${props.currentUser.avatar})` : undefined, backgroundSize: 'cover' }"
               aria-haspopup="menu"
@@ -3578,6 +4158,7 @@ onBeforeUnmount(() => {
               @keydown.enter.prevent="openProfileMenu"
               @keydown.space.prevent="openProfileMenu"
             ></button>
+            <span v-if="isAdmin && totalUnreadModeratorNotifications > 0" class="avatar-badge" aria-label="Ongelezen moderatiemeldingen">{{ totalUnreadModeratorNotifications }}</span>
 
             <transition name="profile-fade">
               <div v-if="showProfileMenu" class="profile-menu" role="menu">
@@ -3606,6 +4187,54 @@ onBeforeUnmount(() => {
                 </button>
               </div>
             </transition>
+
+            <transition name="profile-fade">
+              <div v-if="showUserNotificationPanel" class="notification-panel" role="dialog" aria-label="Meldingen">
+                <div class="notification-panel-header">
+                  <div>
+                    <div class="notification-panel-title">Meldingen</div>
+                    <div class="notification-panel-subtitle">Berichten, uitnodigingen en objectreacties</div>
+                  </div>
+                  <button
+                    type="button"
+                    class="notification-panel-close"
+                    aria-label="Sluit meldingen"
+                    @click="closeUserNotificationPanel"
+                  >
+                    ×
+                  </button>
+                </div>
+
+                <div v-if="!userNotifications.length" class="notification-panel-empty">
+                  Geen nieuwe meldingen.
+                </div>
+
+                <ul v-else class="notification-list">
+                  <li
+                    v-for="entry in userNotifications"
+                    :key="entry.id"
+                    class="notification-item"
+                    :class="{ unread: !entry.read }"
+                  >
+                    <div class="notification-item-head">
+                      <span class="notification-kind">{{ notificationKindLabel(entry.kind) }}</span>
+                      <span class="notification-time">{{ notificationShortTime(entry.timestamp) }}</span>
+                    </div>
+                    <div class="notification-item-title">{{ entry.title }}</div>
+                    <div v-if="entry.message" class="notification-item-message">{{ entry.message }}</div>
+                    <div v-if="entry.roomName" class="notification-item-room">Kamer: {{ entry.roomName }}</div>
+                    <button
+                      v-if="entry.actionRoomId"
+                      type="button"
+                      class="notification-item-action"
+                      @click="handleNotificationAction(entry)"
+                    >
+                      {{ entry.actionLabel || 'Open ruimte' }}
+                    </button>
+                  </li>
+                </ul>
+              </div>
+            </transition>
           </div>
         </div>
 
@@ -3613,6 +4242,7 @@ onBeforeUnmount(() => {
           <ModeratorPanel
             v-if="isModeratorMode"
             :objects="sceneObjects"
+            :notifications="moderatorNotifications"
             @hide="hideSceneObject"
             @restore="restoreSceneObject"
             @close="setAdminViewMode('edit')"
@@ -3743,7 +4373,7 @@ onBeforeUnmount(() => {
         </button>
         <!-- Removed direct Load button: use Versions to restore saved scenes -->
         <button
-          v-if="effectiveRole === 'admin'"
+          v-if="props.currentUser && props.currentUser.role !== 'visitor'"
           type="button"
           class="storage-dock-button"
           title="Bekijk opgeslagen versies"
@@ -3753,7 +4383,7 @@ onBeforeUnmount(() => {
           <span class="dock-label">Versies</span>
         </button>
 
-        <div v-if="showVersionsPanel && effectiveRole === 'admin'" class="versions-panel">
+  <div v-if="showVersionsPanel && props.currentUser && props.currentUser.role !== 'visitor'" class="versions-panel">
           <div v-if="!savedScenes.length" class="versions-empty">Geen versies opgeslagen</div>
           <ul v-else class="versions-list">
             <li v-for="entry in savedScenes" :key="entry.id" class="version-item">
@@ -3772,14 +4402,18 @@ onBeforeUnmount(() => {
 
       <div
         v-if="hoveredPhoto"
-        class="photo-tooltip"
+        :class="['photo-tooltip', hoveredPhoto.kind === 'candle' ? 'photo-tooltip--candle' : '']"
         :style="{
           left: `${hoveredPhotoPosition.x}px`,
           top: `${hoveredPhotoPosition.y}px`,
         }"
       >
         <strong>{{ hoveredPhoto.title }}</strong>
-        <p>{{ hoveredPhoto.text || 'Geen extra tekst toegevoegd.' }}</p>
+        <p class="hover-message">{{ hoveredPhoto.text || 'Geen extra tekst toegevoegd.' }}</p>
+        <div class="hover-meta" v-if="hoveredPhoto.kind === 'candle'">
+          <div class="hover-size"><strong>{{ hoveredPhoto.sizeLabelTitle }}</strong> <span class="hover-meta-value">{{ hoveredPhoto.sizeLabelValue }}</span></div>
+          <div class="hover-date" v-if="hoveredPhoto.placedDateLabelValue"><strong>{{ hoveredPhoto.placedDateLabelTitle }}</strong> <span class="hover-meta-value">{{ hoveredPhoto.placedDateLabelValue }}</span></div>
+        </div>
       </div>
 
       <aside v-if="selectedSceneObject && canEditSceneObjects" class="selection-panel">
@@ -3883,8 +4517,31 @@ onBeforeUnmount(() => {
           </div>
         </div>
 
-        <div class="selection-actions">
-          <button type="button" class="selection-delete-button" @click="removeSelectedSceneObject">
+        <!-- Candle-specific editor (only visible for candles selected by their creator) -->
+        <div v-if="selectedSceneObject && selectedSceneObject.assetId === 'candle'" class="candle-editor">
+          <div class="control-group">
+            <div class="control-label">Boodschap</div>
+            <textarea v-model="editCandleMessage" rows="3" class="candle-message-input" placeholder="Boodschap voor de kaars"></textarea>
+          </div>
+
+          <div class="control-group">
+            <div class="control-label">Grootte</div>
+            <select v-model="editCandleSize" class="candle-size-select">
+              <option value="small">Klein</option>
+              <option value="medium">Gemiddeld</option>
+              <option value="large">Groot</option>
+            </select>
+          </div>
+
+          <div class="selection-actions">
+            <button type="button" class="selection-save-button" @click="applyCandleEdits">Opslaan</button>
+            <button type="button" class="selection-delete-button" @click="requestDeleteSelectedSceneObject">Verwijderen</button>
+          </div>
+        </div>
+
+        <!-- Fallback delete action for non-candle or general selection -->
+        <div v-else class="selection-actions">
+          <button type="button" class="selection-delete-button" @click="requestDeleteSelectedSceneObject">
             Verwijderen
           </button>
         </div>
@@ -4027,7 +4684,7 @@ onBeforeUnmount(() => {
             <input v-model="editDisplayName" style="width:100%;padding:8px;border-radius:8px;border:1px solid #e6e6ee;margin-top:6px" />
           </div>
 
-          <div v-if="props.currentUser && props.currentUser.role === 'admin'" id="admin-settings-my-rooms-section" class="room-settings-section">
+          <div v-if="props.currentUser && (props.currentUser.role === 'admin' || props.currentUser.role === 'editor')" id="admin-settings-my-rooms-section" class="room-settings-section">
             <div class="room-settings-label">Mijn ruimtes</div>
             <p class="room-settings-help">Hier zie je de ruimtes waartoe je toegang hebt.</p>
 
@@ -4042,6 +4699,7 @@ onBeforeUnmount(() => {
                     <span v-if="room.id === props.roomId">· Huidige ruimte</span>
                   </div>
                 </div>
+                <span v-if="room.unreadModeratorNotifications > 0" class="room-switcher-badge">{{ room.unreadModeratorNotifications }}</span>
                 <button
                   type="button"
                   class="room-switcher-button"
@@ -4055,7 +4713,7 @@ onBeforeUnmount(() => {
 
             <div v-else class="room-members-empty">
               <div>Nog geen andere ruimtes gevonden.</div>
-              <button type="button" class="room-switcher-button room-switcher-empty-button" @click="openCreateRoom">
+              <button v-if="props.currentUser && props.currentUser.role === 'admin'" type="button" class="room-switcher-button room-switcher-empty-button" @click="openCreateRoom">
                 Nieuwe kamer maken
               </button>
             </div>
@@ -4331,6 +4989,54 @@ onBeforeUnmount(() => {
 
 .profile-menu-wrap {
   position: relative;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.notification-bell {
+  position: absolute;
+  top: -8px;
+  right: -10px;
+  width: 28px;
+  height: 28px;
+  border: 1px solid rgba(175, 153, 193, 0.7);
+  border-radius: 999px;
+  background: linear-gradient(180deg, rgba(255, 252, 248, 0.98), rgba(243, 235, 246, 0.96));
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  box-shadow: 0 8px 18px rgba(35, 19, 48, 0.12);
+  z-index: 2;
+}
+
+.notification-bell.active {
+  border-color: rgba(177, 131, 168, 0.95);
+  box-shadow: 0 10px 20px rgba(119, 80, 128, 0.18);
+}
+
+.notification-bell-icon {
+  font-size: 14px;
+  line-height: 1;
+}
+
+.notification-bell-badge {
+  position: absolute;
+  top: -6px;
+  right: -6px;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 4px;
+  border-radius: 999px;
+  background: #c23a3a;
+  color: #fff;
+  font-size: 10px;
+  font-weight: 800;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 3px 8px rgba(0,0,0,0.18);
 }
 
 .avatar {
@@ -4341,6 +5047,25 @@ onBeforeUnmount(() => {
   background: radial-gradient(circle at 50% 26%, #0e0e0e 0 18%, transparent 19%),
     radial-gradient(circle at 50% 75%, #0e0e0e 0 28%, transparent 29%),
     #dcdcdc;
+}
+
+.avatar-badge {
+  position: absolute;
+  bottom: -4px;
+  right: -4px;
+  min-width: 20px;
+  height: 20px;
+  padding: 0 5px;
+  border-radius: 999px;
+  background: #c23a3a;
+  color: #fff;
+  font-size: 11px;
+  font-weight: 700;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 4px 10px rgba(0,0,0,0.18);
+  pointer-events: none;
 }
 
 .profile-menu {
@@ -4356,6 +5081,131 @@ onBeforeUnmount(() => {
   backdrop-filter: blur(12px);
   z-index: 10020;
   pointer-events: auto;
+}
+
+.notification-panel {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 10px);
+  width: min(360px, calc(100vw - 24px));
+  max-height: 420px;
+  padding: 12px;
+  border: 1px solid #e0d6ea;
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.98);
+  box-shadow: 0 18px 40px rgba(0, 0, 0, 0.15);
+  backdrop-filter: blur(12px);
+  z-index: 10022;
+  overflow: hidden;
+}
+
+.notification-panel-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 10px;
+}
+
+.notification-panel-title {
+  font-family: 'Outfit', 'Segoe UI', sans-serif;
+  font-size: 16px;
+  font-weight: 800;
+  color: #1b1630;
+}
+
+.notification-panel-subtitle {
+  margin-top: 2px;
+  color: #6a6180;
+  font-size: 12px;
+}
+
+.notification-panel-close {
+  width: 28px;
+  height: 28px;
+  border: none;
+  border-radius: 999px;
+  background: #f2edf7;
+  color: #4b3f66;
+  font-size: 18px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.notification-panel-empty {
+  padding: 18px 12px;
+  color: #6a6180;
+  font-size: 14px;
+  text-align: center;
+}
+
+.notification-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  overflow: auto;
+  max-height: 350px;
+}
+
+.notification-item {
+  padding: 12px;
+  border: 1px solid #ece5f3;
+  border-radius: 16px;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.96), rgba(248, 244, 251, 0.98));
+}
+
+.notification-item.unread {
+  border-color: rgba(177, 131, 168, 0.55);
+  box-shadow: inset 0 0 0 1px rgba(177, 131, 168, 0.12);
+}
+
+.notification-item-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  font-size: 11px;
+  margin-bottom: 6px;
+}
+
+.notification-kind {
+  padding: 3px 8px;
+  border-radius: 999px;
+  background: #f4edf8;
+  color: #6c4f82;
+  font-weight: 700;
+}
+
+.notification-time {
+  color: #8c819e;
+}
+
+.notification-item-title {
+  color: #1b1630;
+  font-size: 14px;
+  font-weight: 800;
+}
+
+.notification-item-message,
+.notification-item-room {
+  margin-top: 4px;
+  color: #4e4563;
+  font-size: 13px;
+  line-height: 1.35;
+}
+
+.notification-item-action {
+  margin-top: 10px;
+  border: 1px solid rgba(177, 131, 168, 0.42);
+  border-radius: 999px;
+  background: #fff;
+  color: #6d4c86;
+  font-size: 12px;
+  font-weight: 700;
+  padding: 7px 11px;
+  cursor: pointer;
 }
 
 .profile-menu-username {
@@ -4561,6 +5411,21 @@ onBeforeUnmount(() => {
   border: 1px solid #e9e9f2;
   border-radius: 12px;
   background: #fafafe;
+}
+
+.room-switcher-badge {
+  min-width: 22px;
+  height: 22px;
+  padding: 0 6px;
+  border-radius: 999px;
+  background: #c23a3a;
+  color: #fff;
+  font-size: 11px;
+  font-weight: 700;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
 }
 
 .room-switcher-row.active {
@@ -5074,20 +5939,20 @@ onBeforeUnmount(() => {
   min-width: 180px;
   max-width: 240px;
   padding: 10px 12px;
-  border-radius: 12px;
-  background: rgba(255, 255, 255, 0.96);
-  border: 1px solid rgba(96, 76, 150, 0.2);
-  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.16);
-  color: #1a1a1a;
+  border-radius: 14px;
+  background: rgba(255, 252, 248, 0.97);
+  border: 1px solid rgba(120, 98, 74, 0.18);
+  box-shadow: 0 8px 20px rgba(60, 44, 30, 0.12);
+  color: #1d1a16;
   pointer-events: none;
-  backdrop-filter: blur(10px);
+  backdrop-filter: blur(8px);
 }
 
 .photo-tooltip strong {
   display: block;
   margin-bottom: 4px;
   font-family: 'Outfit', 'Segoe UI', sans-serif;
-  font-size: 14px;
+  font-size: 13px;
   font-weight: 700;
 }
 
@@ -5096,7 +5961,56 @@ onBeforeUnmount(() => {
   font-family: 'Outfit', 'Segoe UI', sans-serif;
   font-size: 12px;
   line-height: 1.45;
-  color: #48415f;
+  color: #5f564d;
+  white-space: pre-line;
+}
+
+.photo-tooltip--candle {
+  background: rgba(255, 248, 238, 0.98);
+  border-color: rgba(184, 128, 66, 0.28);
+  box-shadow: 0 10px 22px rgba(108, 72, 32, 0.14);
+}
+
+.photo-tooltip--candle strong {
+  color: #6b3f16;
+}
+
+.photo-tooltip--candle p {
+  color: #6a5340;
+}
+
+.photo-tooltip .hover-meta {
+  margin-top: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.photo-tooltip .hover-size {
+  font-weight: 400;
+  color: #5f564d;
+  font-size: 12px;
+}
+
+.photo-tooltip .hover-date {
+  font-size: 12px;
+  color: #5f564d;
+  font-weight: 400;
+}
+
+.photo-tooltip .hover-meta strong {
+  display: inline;
+  margin-bottom: 0;
+  font-weight: 700;
+}
+
+.photo-tooltip .hover-meta-value {
+  color: #5f564d;
+  font-weight: 400;
+}
+
+.photo-tooltip--candle .hover-meta strong {
+  color: #6b3f16;
 }
 
 .selection-panel {
@@ -5112,6 +6026,35 @@ onBeforeUnmount(() => {
   box-shadow: 0 14px 28px rgba(0, 0, 0, 0.14);
   backdrop-filter: blur(12px);
   overflow-y: auto;
+}
+
+.candle-editor .candle-message-input {
+  width: 100%;
+  padding: 8px;
+  border-radius: 10px;
+  border: 1px solid rgba(90,80,70,0.12);
+  font-family: 'Outfit', 'Segoe UI', sans-serif;
+  font-size: 13px;
+  resize: vertical;
+}
+
+.candle-editor .candle-size-select {
+  width: 100%;
+  padding: 8px;
+  border-radius: 10px;
+  border: 1px solid rgba(90,80,70,0.12);
+  font-family: 'Outfit', 'Segoe UI', sans-serif;
+}
+
+.selection-save-button {
+  background: #6c5ce7;
+  color: #fff;
+  border: none;
+  padding: 8px 12px;
+  border-radius: 10px;
+  font-weight: 700;
+  cursor: pointer;
+  margin-right: 8px;
 }
 
 .selection-panel-header {
