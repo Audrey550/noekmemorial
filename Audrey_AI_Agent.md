@@ -178,6 +178,38 @@ Confirmed: code changes saved in workspace; ready to continue tomorrow.
 
 This is the running log for the work we do in this project. I will keep it updated as tasks are requested, completed, or deferred.
 
+## Session Snapshot (2026-05-31)
+
+### Summary
+- Reviewed the current co-editor mode surface to separate what is already wired from what still needs finishing.
+- Co-editor editing, media panel access, room switching, visitor-preview split, and basic invite/profile flow are present.
+- Remaining work is mostly end-to-end validation, role-gating polish, and replacing demo/local-only flows with the final persistence and invite path.
+- Added hover metadata for placed candles so the placer's name and message show on hover like other object info.
+- Polished the hover bubble styling and added candle size to the hover text.
+- Added candle placement timestamps and a warmer candle-specific hover style.
+- Reworded the candle hover line to start with 'Boodschap van ...'.
+- Changed the candle hover header to 'Boodschap van ...' instead of the name alone.
+- Restored candle reload to use the candle geometry again and kept candles out of the normal selected-object panel.
+- Added extra spacing between the candle message and its metadata, with the timestamp grouped beside the size.
+- Added an admin notification queue for placed objects, messages, candles, and generic object placements.
+- Put the unread moderation count on the admin avatar and surfaced the notification list inside the Moderator panel.
+- Scoped moderation notifications per room and added unread badges in `Mijn ruimtes` for rooms with new activity.
+- Exposed `Mijn ruimtes` to co-editors in account settings, matching the admin room-switcher style.
+- Exposed the `Versies` button/panel to logged-in non-visitor users so co-editors can restore saved scenes.
+
+### Tracker Update
+- 2026-05-31: Reviewed the co-editor mode state and confirmed the tracker was updated for this session.
+- 2026-05-31: Added candle hover metadata so placed candles reveal the name and message on hover.
+- 2026-05-31: Softened the hover tooltip styling and included candle size in the hover text.
+- 2026-05-31: Added candle placement timestamps and a candle-specific hover accent.
+- 2026-05-31: Reworded the candle hover copy to 'Boodschap van ...'.
+- 2026-05-31: Changed the candle hover title to 'Boodschap van ...'.
+- 2026-05-31: Restored candle-specific reload behavior and excluded candles from the selected-object panel.
+- 2026-05-31: Spaced the candle tooltip message away from the size/timestamp metadata.
+ - 2026-05-31: Added moderator notifications for placements and moved the unread badge to the admin avatar.
+ - 2026-05-31: Scoped moderation notifications per room and added unread badges in `Mijn ruimtes` for rooms with new activity.
+ - 2026-05-31: Bolded the `Grootte` and `Datum` labels in the candle tooltip and aligned label/value styling.
+
 ## Current Focus
 
 - Project: Memorial Space
