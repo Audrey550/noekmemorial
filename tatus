@@ -1,0 +1,264 @@
+[1mdiff --git a/Audrey_AI_Agent.md b/Audrey_AI_Agent.md[m
+[1mindex b28ba2a..89f13a0 100644[m
+[1m--- a/Audrey_AI_Agent.md[m
+[1m+++ b/Audrey_AI_Agent.md[m
+[36m@@ -178,6 +178,38 @@[m [mConfirmed: code changes saved in workspace; ready to continue tomorrow.[m
+ [m
+ This is the running log for the work we do in this project. I will keep it updated as tasks are requested, completed, or deferred.[m
+ [m
+[32m+[m[32m## Session Snapshot (2026-05-31)[m
+[32m+[m
+[32m+[m[32m### Summary[m
+[32m+[m[32m- Reviewed the current co-editor mode surface to separate what is already wired from what still needs finishing.[m
+[32m+[m[32m- Co-editor editing, media panel access, room switching, visitor-preview split, and basic invite/profile flow are present.[m
+[32m+[m[32m- Remaining work is mostly end-to-end validation, role-gating polish, and replacing demo/local-only flows with the final persistence and invite path.[m
+[32m+[m[32m- Added hover metadata for placed candles so the placer's name and message show on hover like other object info.[m
+[32m+[m[32m- Polished the hover bubble styling and added candle size to the hover text.[m
+[32m+[m[32m- Added candle placement timestamps and a warmer candle-specific hover style.[m
+[32m+[m[32m- Reworded the candle hover line to start with 'Boodschap van ...'.[m
+[32m+[m[32m- Changed the candle hover header to 'Boodschap van ...' instead of the name alone.[m
+[32m+[m[32m- Restored candle reload to use the candle geometry again and kept candles out of the normal selected-object panel.[m
+[32m+[m[32m- Added extra spacing between the candle message and its metadata, with the timestamp grouped beside the size.[m
+[32m+[m[32m- Added an admin notification queue for placed objects, messages, candles, and generic object placements.[m
+[32m+[m[32m- Put the unread moderation count on the admin avatar and surfaced the notification list inside the Moderator panel.[m
+[32m+[m[32m- Scoped moderation notifications per room and added unread badges in `Mijn ruimtes` for rooms with new activity.[m
+[32m+[m[32m- Exposed `Mijn ruimtes` to co-editors in account settings, matching the admin room-switcher style.[m
+[32m+[m[32m- Exposed the `Versies` button/panel to logged-in non-visitor users so co-editors can restore saved scenes.[m
+[32m+[m
+[32m+[m[32m### Tracker Update[m
+[32m+[m[32m- 2026-05-31: Reviewed the co-editor mode state and confirmed the tracker was updated for this session.[m
+[32m+[m[32m- 2026-05-31: Added candle hover metadata so placed candles reveal the name and message on hover.[m
+[32m+[m[32m- 2026-05-31: Softened the hover tooltip styling and included candle size in the hover text.[m
+[32m+[m[32m- 2026-05-31: Added candle placement timestamps and a candle-specific hover accent.[m
+[32m+[m[32m- 2026-05-31: Reworded the candle hover copy to 'Boodschap van ...'.[m
+[32m+[m[32m- 2026-05-31: Changed the candle hover title to 'Boodschap van ...'.[m
+[32m+[m[32m- 2026-05-31: Restored candle-specific reload behavior and excluded candles from the selected-object panel.[m
+[32m+[m[32m- 2026-05-31: Spaced the candle tooltip message away from the size/timestamp metadata.[m
+[32m+[m[32m - 2026-05-31: Added moderator notifications for placements and moved the unread badge to the admin avatar.[m
+[32m+[m[32m - 2026-05-31: Scoped moderation notifications per room and added unread badges in `Mijn ruimtes` for rooms with new activity.[m
+[32m+[m[32m - 2026-05-31: Bolded the `Grootte` and `Datum` labels in the candle tooltip and aligned label/value styling.[m
+[32m+[m
+ ## Current Focus[m
+ [m
+ - Project: Memorial Space[m
+[1mdiff --git a/memorial-space/src/components/ModeratorPanel.vue b/memorial-space/src/components/ModeratorPanel.vue[m
+[1mindex c08649d..3d323cb 100644[m
+[1m--- a/memorial-space/src/components/ModeratorPanel.vue[m
+[1m+++ b/memorial-space/src/components/ModeratorPanel.vue[m
+[36m@@ -2,6 +2,7 @@[m
+ import { computed } from 'vue'[m
+ const props = defineProps({[m
+   objects: { type: Array, default: () => [] },[m
+[32m+[m[32m  notifications: { type: Array, default: () => [] },[m
+ })[m
+ const emit = defineEmits(['hide','restore','close'])[m
+ [m
+[36m@@ -11,6 +12,10 @@[m [mconst entries = computed(() => {[m
+   return (props.objects || []).filter(o => moderationTypes.includes(o.assetId))[m
+ })[m
+ [m
+[32m+[m[32mconst notifications = computed(() => {[m
+[32m+[m[32m  return (props.notifications || []).slice().sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp))[m
+[32m+[m[32m})[m
+[32m+[m
+ const hide = (id) => emit('hide', id)[m
+ const restore = (id) => emit('restore', id)[m
+ </script>[m
+[36m@@ -21,16 +26,35 @@[m [mconst restore = (id) => emit('restore', id)[m
+       <h3>Moderator</h3>[m
+       <button class="close" @click="$emit('close')">✕</button>[m
+     </div>[m
+[31m-    <div class="moderator-list">[m
+[31m-      <div v-if="entries.length === 0" class="empty">Geen bijdragen gevonden</div>[m
+[31m-      <div v-for="item in entries" :key="item.id" class="moderator-item">[m
+[31m-        <div class="meta">[m
+[31m-          <div class="title">{{ item.photoData?.title || item.videoData?.title || item.audioData?.title || (item.messageData?.message ? item.messageData.message.slice(0,60) : '') || item.candleData?.name || item.assetId }}</div>[m
+[31m-          <div class="sub">Type: {{ item.assetId }} • id {{ item.id }}</div>[m
+[32m+[m[32m    <div class="moderator-section">[m
+[32m+[m[32m      <div class="moderator-section-title">Nieuwe meldingen</div>[m
+[32m+[m[32m      <div class="moderator-list">[m
+[32m+[m[32m        <div v-if="notifications.length === 0" class="empty">Geen nieuwe meldingen</div>[m
+[32m+[m[32m        <div v-for="item in notifications" :key="item.id" class="moderator-item moderator-item--notification">[m
+[32m+[m[32m          <div class="meta">[m
+[32m+[m[32m            <div class="title">{{ item.title }}</div>[m
+[32m+[m[32m            <div class="sub">{{ item.actor }} • {{ new Date(item.timestamp).toLocaleString() }}</div>[m
+[32m+[m[32m            <div v-if="item.subtitle" class="sub">{{ item.subtitle }}</div>[m
+[32m+[m[32m          </div>[m
+[32m+[m[32m          <div class="actions">[m
+[32m+[m[32m            <span v-if="!item.read" class="new-pill">Nieuw</span>[m
+[32m+[m[32m          </div>[m
+         </div>[m
+[31m-        <div class="actions">[m
+[31m-          <button v-if="!item.hidden" @click="hide(item.id)">Verberg</button>[m
+[31m-          <button v-else @click="restore(item.id)">Herstel</button>[m
+[32m+[m[32m      </div>[m
+[32m+[m[32m    </div>[m
+[32m+[m[32m    <div class="moderator-section">[m
+[32m+[m[32m      <div class="moderator-section-title">Bijdragen</div>[m
+[32m+[m[32m      <div class="moderator-list">[m
+[32m+[m[32m        <div v-if="entries.length === 0" class="empty">Geen bijdragen gevonden</div>[m
+[32m+[m[32m        <div v-for="item in entries" :key="item.id" class="moderator-item">[m
+[32m+[m[32m          <div class="meta">[m
+[32m+[m[32m            <div class="title">{{ item.photoData?.title || item.videoData?.title || item.audioData?.title || (item.messageData?.message ? item.messageData.message.slice(0,60) : '') || item.candleData?.name || item.assetId }}</div>[m
+[32m+[m[32m            <div class="sub">Type: {{ item.assetId }} • id {{ item.id }}</div>[m
+[32m+[m[32m          </div>[m
+[32m+[m[32m          <div class="actions">[m
+[32m+[m[32m            <button v-if="!item.hidden" @click="hide(item.id)">Verberg</button>[m
+[32m+[m[32m            <button v-else @click="restore(item.id)">Herstel</button>[m
+[32m+[m[32m          </div>[m
+         </div>[m
+       </div>[m
+     </div>[m
+[36m@@ -40,11 +64,15 @@[m [mconst restore = (id) => emit('restore', id)[m
+ <style scoped>[m
+ .moderator-panel{position:fixed;right:16px;top:86px;width:320px;height:72vh;background:#fff;border-radius:10px;box-shadow:0 12px 40px rgba(0,0,0,0.12);padding:12px;z-index:20050;overflow:auto}[m
+ .moderator-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:8px}[m
+[32m+[m[32m.moderator-section{display:flex;flex-direction:column;gap:8px;margin-bottom:14px}[m
+[32m+[m[32m.moderator-section-title{font-size:12px;font-weight:700;color:#6a4e2f;text-transform:uppercase;letter-spacing:.04em}[m
+ .moderator-list{display:flex;flex-direction:column;gap:8px}[m
+ .moderator-item{display:flex;justify-content:space-between;align-items:center;padding:8px;border-radius:8px;background:#fbfbfb;border:1px solid rgba(0,0,0,0.04)}[m
+[32m+[m[32m.moderator-item--notification{background:#fff8ef;border-color:rgba(184,128,66,0.18)}[m
+ .moderator-item .meta .title{font-weight:600;font-size:13px}[m
+ .moderator-item .meta .sub{font-size:12px;color:#666}[m
+ .moderator-item .actions button{background:#f3f3f5;border:1px solid #e0e0e0;padding:6px 8px;border-radius:6px;cursor:pointer}[m
+[32m+[m[32m.new-pill{display:inline-flex;align-items:center;padding:4px 8px;border-radius:999px;background:#6c5ce7;color:#fff;font-size:11px;font-weight:700}[m
+ .empty{color:#666;padding:20px;text-align:center}[m
+ .close{background:transparent;border:0;font-size:18px;cursor:pointer}[m
+ </style>[m
+[1mdiff --git a/memorial-space/src/components/SceneCanvas.vue b/memorial-space/src/components/SceneCanvas.vue[m
+[1mindex ff6c382..c1cdc05 100644[m
+[1m--- a/memorial-space/src/components/SceneCanvas.vue[m
+[1m+++ b/memorial-space/src/components/SceneCanvas.vue[m
+[36m@@ -220,8 +220,33 @@[m [mconst accountSettingsLabel = computed(() => {[m
+   return 'Accountinstellingen'[m
+ })[m
+ [m
+[32m+[m[32mconst getUnreadModeratorNotificationCount = (roomId) => {[m
+[32m+[m[32m  try {[m
+[32m+[m[32m    const raw = localStorage.getItem(`audreyModeratorNotifications_${roomId || 'default'}`)[m
+[32m+[m[32m    if (!raw) return 0[m
+[32m+[m[32m    const entries = JSON.parse(raw)[m
+[32m+[m[32m    return Array.isArray(entries) ? entries.filter(entry => !entry.read).length : 0[m
+[32m+[m[32m  } catch (e) {[m
+[32m+[m[32m    return 0[m
+[32m+[m[32m  }[m
+[32m+[m[32m}[m
+[32m+[m
+ const roomSwitcherRooms = computed(() => {[m
+[31m-  return Array.isArray(props.accessibleRooms) ? props.accessibleRooms : [][m
+[32m+[m[32m  void moderatorNotificationVersion.value[m
+[32m+[m[32m  return (Array.isArray(props.accessibleRooms) ? props.accessibleRooms : []).map((room) => ({[m
+[32m+[m[32m    ...room,[m
+[32m+[m[32m    unreadModeratorNotifications: typeof room.unreadModeratorNotifications === 'number'[m
+[32m+[m[32m      ? room.unreadModeratorNotifications[m
+[32m+[m[32m      : getUnreadModeratorNotificationCount(room.id),[m
+[32m+[m[32m  }))[m
+[32m+[m[32m})[m
+[32m+[m
+[32m+[m[32m  /*if (userNotificationStorageListener) {[m
+[32m+[m[32m    window.removeEventListener('storage', userNotificationStorageListener)[m
+[32m+[m[32m    userNotificationStorageListener = null[m
+[32m+[m[32m  }*/[m
+[32m+[m[32mconst totalUnreadModeratorNotifications = computed(() => {[m
+[32m+[m[32m  return roomSwitcherRooms.value.reduce((total, room) => total + (room.unreadModeratorNotifications || 0), 0)[m
+ })[m
+ [m
+ watch(effectiveRole, (role) => {[m
+[36m@@ -238,6 +263,7 @@[m [mwatch(effectiveRole, (role) => {[m
+ [m
+ watch(() => props.currentUser, (nu) => {[m
+   if (nu && nu.displayName) username.value = nu.displayName[m
+[32m+[m[32m  loadUserNotifications()[m
+ })[m
+ // reload room metadata when roomId changes[m
+ watch(() => props.roomId, () => {[m
+[36m@@ -268,6 +294,7 @@[m [mconst soundSettings = ref({[m
+ })[m
+ const showFloor = ref(true)[m
+ const showProfileMenu = ref(false)[m
+[32m+[m[32mconst showUserNotificationPanel = ref(false)[m
+ const hoveredPhoto = ref(null)[m
+ const hoveredPhotoPosition = ref({ x: 0, y: 0 })[m
+ const selectedSceneObjectId = ref(null)[m
+[36m@@ -276,11 +303,14 @@[m [mconst selectedSceneObjectType = ref('')[m
+ const selectedSceneObjectLabel = ref('')[m
+ const selectedSceneObjectColor = ref('#3c3c3c')[m
+ const newObjectMessage = ref('')[m
+[32m+[m[32mconst moderatorNotifications = ref([])[m
+[32m+[m[32mconst moderatorNotificationVersion = ref(0)[m
+ const transformStep = 0.2[m
+ const rotateStep = Math.PI / 12[m
+ const scaleStep = 0.1[m
+ const assetModels = ref([])[m
+ const hideDeleteHint = ref(false)[m
+[32m+[m[32mconst userNotifications = ref([])[m
+ const undoStack = ref([])[m
+ const redoStack = ref([])[m
+ const canUndo = computed(() => undoStack.value.length > 0)[m
+[36m@@ -290,6 +320,35 @@[m [mconst maxUndoSteps = 40[m
+ const showResetRoomModal = ref(false)[m
+ const canEditSceneObjects = computed(() => effectiveRole.value === 'admin' || effectiveRole.value === 'editor')[m
+ const leftToolbarTitle = computed(() => effectiveRole.value === 'editor' ? 'Media' : 'Assets')[m
+[32m+[m[32mconst moderatorNotificationStorageKey = () => `audreyModeratorNotifications_${props.roomId || 'default'}`[m
+[32m+[m[32mconst moderatorNotificationUnreadCount = computed(() => moderatorNotifications.value.filter(entry => !entry.read).length)[m
+[32m+[m[32mconst userNotificationStorageKey = () => {[m
+[32m+[m[32m  const key = getCurrentUserKey()[m
+[32m+[m[32m  return `audreyNotifications_${key || 'default'}`[m
+[32m+[m[32m}[m
+[32m+[m[32mconst unreadUserNotificationCount = computed(() => userNotifications.value.filter(entry => !entry.read).length)[m
+[32m+[m[32mconst notificationKindLabel = (kind) => {[m
+[32m+[m[32m  switch (kind) {[m
+[32m+[m[32m    case 'room_invite': return 'Uitnodiging'[m
+[32m+[m[32m    case 'comment': return 'Opmerking'[m
+[32m+[m[32m    case 'candle_removed': return 'Moderatie'[m
+[32m+[m[32m    case 'placement': return 'Nieuwe plaatsing'[m
+[32m+[m[32m    default: return 'Melding'[m
+[32m+[m[32m  }[m
+[32m+[m[32m}[m
+[32m+[m[32mconst notificationShortTime = (timestamp) => {[m
+[32m+[m[32m  if (!timestamp) return ''[m
+[32m+[m[32m  try {[m
+[32m+[m[32m    return new Date(timestamp).toLocaleString('nl-NL', {[m
+[32m+[m[32m      day: '2-digit',[m
+[32m+[m[32m      month: 'short',[m
+[32m+[m[32m      hour: '2-digit',[m
+[32m+[m[32m      minute: '2-digit',[m
+[32m+[m[32m    })[m
+[32m+[m[32m  } catch (e) {[m
+[32m+[m[32m    return ''[m
+[32m+[m[32m  }[m
+[32m+[m[32m}[m
+ // Initialize from localStorage if available[m
+ try {[m
+   const _saved = localStorage.getItem('memorial_hideDeleteHint')[m
+[36m@@ -323,6 +382,7 @@[m [mlet raycaster = new THREE.Raycaster()[m
+ let pointer = new THREE.Vector2()[m
+ let panelSwitchTimer = null[m
+ let soundAudioContext = null[m
+[32m+[m[32mlet userNotificationStorageListener = null[m
+ let activeSoundDisposers = [][m
+ let activeSoundTimers = [][m
+ const topNavMenuElement = ref(null)[m
+[36m@@ -1260,6 +1320,54 @@[m [mconst deserializeSceneState = async (jsonString) => {[m
+           sceneObjects.value[sceneObjects.value.length - 1].hidden = true[m
+           try { messageGroup.visible = false } catch (e) {}[m
+         }[m
+[32m+[m[32m      } else if (objData.assetId === 'candle' && objData.candleData) {[m
+[32m+[m[32m        const candleGroup = new THREE.Group()[m
+[32m+[m
+[32m+[m[32m        const baseGeometry = new THREE.CylinderGeometry(0.15, 0.15, 0.05, 32)[m
+[32m+[m[32m        const baseMaterial = new THREE.MeshStandardMaterial({ color: 0xf5f5f0, roughness: 0.8 })[m
+[32m+[m[32m        const base = new THREE.Mesh(baseGeometry, baseMaterial)[m
+[32m+[m[32m        base.castShadow = true[m
+[32m+[m[32m        base.receiveShadow = true[m
+[32m+[m[32m        base.position.y = 0.025[m
+[32m+[m[32m        candleGroup.add(base)[m
+[32m+[m
+[32m+[m[32m        let candleHeight = 0.4[m
+[32m+[m[32m        if (objData.candleData.size?.id === 'small') candleHeight = 0.3[m
+[32m+[m[32m        if (objData.candleData.size?.id === 'large') candleHeight = 0.6[m
+[32m+[m
+[32m+[m[32m        const candleGeometry = new THREE.CylinderGeometry(0.08, 0.08, candleHeight, 16)[m
+[32m+[m[32m        const candleMaterial = new THREE.MeshStandardMaterial({[m
+[32m+[m[32m          color: 0xfffacd,[m
+[32m+[m[32m
