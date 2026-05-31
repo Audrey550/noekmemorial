@@ -60,6 +60,7 @@ export function logEvent(name, props = {}) {
   try { console.log('[analytics]', entry.name, entry.props) } catch (e) {}
   // Fire-and-forget supabase send
   try { trySendToSupabase(entry) } catch (e) {}
+  return entry
 }
 
 export function getEvents() {
