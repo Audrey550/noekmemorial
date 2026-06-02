@@ -413,21 +413,10 @@ supabase.auth.getUser().then(async res => {
 })
 
     supabase.auth.onAuthStateChange((event, session) => {
-      if (session && session.user) {
-        const u = session.user
-        let pendingRole = 'viewer'
-        try {
-          pendingRole = localStorage.getItem('audreyPendingRole') || authUser.value?.role || 'viewer'
-          localStorage.removeItem('audreyPendingRole')
-        } catch (e) {}
-        const userObj = { email: u.email, role: pendingRole, displayName: (u.email && u.email.split('@')[0]) || 'User', avatar: authUser.value?.avatar || '', supabaseId: u.id }
-        authUser.value = userObj
-        try { localStorage.setItem('audreyUser', JSON.stringify(userObj)) } catch (e) {}
-        void loadAdminRoomsFromSupabase(userObj)
-        void refreshAccessibleRooms(userObj)
-      } else {
-        // signed out
-        // keep local mock behavior
+      if (event === 'SIGNED_OUT') {
+        authUser.value = null
+        accessibleRooms.value = []
+        roomMembersCache.value = {}
       }
     })
   }
@@ -475,41 +464,42 @@ supabase.auth.getUser().then(async res => {
   void refreshAccessibleRooms(authUser.value)
 })
 
-const handleLogin = (user) => {
+const handleLogin = async (user) => {
+  console.log('HANDLE LOGIN USER:', user)
+  console.log('INVITED ROOM ID:', user.invitedRoomId)
+
   authUser.value = user
-  try { localStorage.setItem('audreyUser', JSON.stringify(user)) } catch (e) {}
-  // Load or initialize rooms for admin users
+
+  try {
+    localStorage.setItem('audreyUser', JSON.stringify(user))
+  } catch (e) {}
+
   if (user.role === 'admin') {
-    void loadAdminRoomsFromSupabase(user)
-    if (adminRooms.value.length === 0) {
-      const key = `audreyRooms_${user.email}`
-      try {
-        const stored = localStorage.getItem(key)
-        adminRooms.value = stored ? JSON.parse(stored) : []
-      } catch (e) {
-        adminRooms.value = []
-      }
-      // Always show the admin room list so admins can choose which room to manage
-      if (adminRooms.value.length === 0) {
-        // create a default room for admin but keep the list visible
-        const id = `room_${Date.now()}`
-        const room = { id, name: 'Mijn Kamer', privacy: 'private' }
-        adminRooms.value.push(room)
-        try { localStorage.setItem(key, JSON.stringify(adminRooms.value)) } catch (e) {}
-      }
-    }
+    await loadAdminRoomsFromSupabase(user)
+    await refreshAccessibleRooms(user)
+
     selectedRoomId.value = null
     showRoomList.value = true
-  } else {
-    // non-admins: only editors should open the editor UI; viewers remain in view-only mode
-    if (user.role === 'editor') {
-      showRoomList.value = false
-    } else {
-      showRoomList.value = false
-    }
+    return
   }
 
-  void refreshAccessibleRooms(user)
+  if (user.role === 'editor') {
+    await refreshAccessibleRooms(user)
+
+    const roomToOpen =
+      user.invitedRoomId ||
+      accessibleRooms.value?.[0]?.id ||
+      null
+
+    console.log('EDITOR ROOM TO OPEN:', roomToOpen)
+
+    selectedRoomId.value = roomToOpen
+    showRoomList.value = false
+    return
+  }
+
+  showRoomList.value = false
+  await refreshAccessibleRooms(user)
 }
 
 const logout = () => {
