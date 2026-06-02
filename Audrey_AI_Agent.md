@@ -1,3 +1,23 @@
+### Editor Invite & Room Assignment Flow (2026-06-02)
+
+Completed invited editor onboarding flow.
+
+Changes:
+- Added room lookup by invite_code during editor signup/login.
+- Automatically create room_members entry for invited editors.
+- Added unique room_id/user_id conflict handling.
+- Persist invitedRoomId in login payload.
+- Updated App.vue login handler to load assigned room for returning editors.
+- Returning editors can now access their assigned room without re-entering an invite code.
+- Fixed editor role routing that previously opened the viewer/default room.
+
+Result:
+- Admin creates room → receives invite code.
+- Editor joins with invite code.
+- room_members record is created.
+- Editor is linked to the room.
+- Future logins automatically reopen the assigned room.
+
 ## Session Snapshot (2026-06-02 — Supabase Authentication, Profiles & Room Persistence)
 
 ### Summary
