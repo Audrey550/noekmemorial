@@ -1,3 +1,99 @@
+## Session Snapshot (2026-06-01 — Room/member Supabase wiring)
+
+### Summary
+- Wired `App.vue` to read accessible rooms and onboarding state from Supabase first, with localStorage fallback still intact.
+- Wired `SceneCanvas.vue` room metadata, room members, room deletion, and invite persistence to Supabase writes so the editor no longer depends only on localStorage for room state.
+- Validated the edited Vue files with `npm run build`; the build completed successfully.
+
+### Remaining
+- Create the `room_members` table in Supabase if it is not already present.
+- Add the RLS policies for `rooms` and `room_members`.
+- Finish a live multi-account smoke test once the database tables are in place.
+
+### Tracker Update
+- 2026-06-01: Wired the app and editor room/member persistence toward Supabase and confirmed the project still builds.
+
+## Session Snapshot (2026-06-01 — Room table setup)
+
+### Summary
+- Agreed to build the `rooms` table first in Supabase so room ownership and access can move off localStorage.
+- The table should use a UUID primary key, link to `auth.users` through `owner_id`, and store room metadata such as name, privacy, invite code, theme, and empty-room state.
+- RLS should stay enabled so the table can be secured before wiring the app to it.
+
+### Column Defaults
+- `id`: `uuid`, primary key, default `gen_random_uuid()`, not nullable.
+- `owner_id`: `uuid`, required, no default, not nullable.
+- `name`: `text`, required, no default, not nullable.
+- `privacy`: `text`, required, default `private`, not nullable.
+- `invite_code`: `text`, optional, no default, nullable, unique if the UI supports it.
+- `theme`: `jsonb`, default `{}`, not nullable.
+- `empty_room`: `boolean`, default `true`, not nullable.
+- `created_at`: `timestamptz`, default `now()`, not nullable.
+
+### Tracker Update
+- 2026-06-01: Logged the agreed `rooms` table structure as the next Supabase step.
+
+## Session Snapshot (2026-06-01 — Supabase starting point)
+
+### Summary
+- Confirmed the Supabase database currently has the `events` table, which is already receiving analytics rows.
+- The database still needs the core room data model for multi-account behavior: rooms, room members, and room access rules.
+- The best continuation point when returning is to add the missing room schema in Supabase, then wire the app to read/write that schema instead of localStorage.
+
+### New Todo
+- Add a Poly Pizza model ingestion flow so collections can be loaded through an API key instead of manually downloading and adding GLB files one by one.
+
+### Note
+- Poly Pizza integration is deferred until after the appointment, per user request.
+
+### Minimum Supabase Work To Do Next
+- Create a `rooms` table for room metadata and ownership.
+- Create a `room_members` table for account-to-room membership and roles.
+- Add the basic RLS policies or access rules that match owner/member access.
+
+### Tracker Update
+- 2026-06-01: Logged the current Supabase starting point: `events` exists, but room and member tables still need to be added.
+
+## Session Snapshot (2026-06-01 — Supabase and models)
+
+### Summary
+- Confirmed Supabase is present in the project, but it currently covers auth and event logging more than authoritative room/account persistence.
+- Room ownership, memberships, invite codes, and onboarding are still mostly stored in `localStorage`, so multi-account behavior is not yet fully server-backed.
+- The current state is workable for the demo, but the next real step for Supabase is moving room/member data into tables so different accounts see the right rooms consistently.
+- Confirmed the 3D model system loads assets from files under `public/models` via asset ids in `SceneCanvas.vue`.
+- There is no real upload pipeline for 3D models yet, so new GLB assets must be added separately unless we build a dedicated storage/upload flow.
+
+### What This Means For The Deadline
+- Keep Supabase as the next important backend follow-up, but do not depend on it for this week’s core demo unless the tables and room binding are already verified.
+- Treat manual model placement from `/public/models` as the current implementation path.
+- If actual user-uploaded 3D models are required, that is a separate feature and not just a small tweak.
+
+### Tracker Update
+- 2026-06-01: Logged that Supabase auth/event support exists, but room and membership data are still localStorage-driven.
+- 2026-06-01: Logged that real 3D models currently load from `/public/models` and still need separate uploading or asset ingestion work.
+
+## Session Snapshot (2026-06-01)
+
+### Summary
+- Double-checked the notification system and confirmed it is already wired in `SceneCanvas.vue` rather than split into a separate service.
+- User notifications are handled inline with a bell icon, localStorage-backed inbox, and room-jump actions.
+- Moderator notifications are also wired inline, with per-room storage and Supabase event polling for `placement_created` when Supabase is available.
+- `App.vue` already passes the room and user context into `SceneCanvas`, so there is no extra parent-level notification wiring left to add.
+- The main work now is verification, edge-case cleanup, and deciding what is truly demo-critical versus optional polish.
+
+### What Still Matters Most
+- Smoke-test the notification flows after the yesterday fix: bell badge, notification panel, moderator badge, and room-switch actions.
+- Check the full demo path once more so we only keep changes that affect the deadline.
+- Fix only blocking issues found during that validation pass.
+
+### Nice-To-Haves If Time Remains
+- Tighten the notification copy and spacing inside the panel.
+- Harden the Supabase-backed notification sync if a real backend test still exposes gaps.
+- Add any remaining UX polish that improves the demo but does not change core behavior.
+
+### Tracker Update
+- 2026-06-01: Confirmed the notification system is already wired in `SceneCanvas.vue` and logged the remaining priority split for the deadline.
+
 ## Session Snapshot (2026-05-30)
 ### Summary — Current work
 - Aligned the media panel with the admin Assets-panel look by switching the media shell to the same white card style, while keeping the existing media workflows inside it.
