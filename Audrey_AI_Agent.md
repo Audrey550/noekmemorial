@@ -1,3 +1,88 @@
+## Session Snapshot (2026-06-02 — Supabase Authentication, Profiles & Room Persistence)
+
+### Summary
+
+* Fixed the Supabase authentication flow.
+* Confirmed users can successfully sign up and sign in with Supabase Auth.
+* Fixed admin account persistence after page refresh.
+* Fixed the application incorrectly falling back to the local mock account system.
+* Added profile synchronization between the app and the `profiles` table.
+* Added support for `email`, `display_name`, and `avatar` fields in `profiles`.
+* Fixed profile RLS policy issues that blocked profile creation.
+* Updated App.vue to load the user's role from the Supabase `profiles` table instead of hardcoded defaults.
+* Confirmed admin users now correctly load as `admin` after refresh.
+
+### Rooms
+
+* Confirmed room creation now writes directly to the `rooms` table.
+* Confirmed newly created rooms persist after page refresh.
+* Fixed room ownership using `owner_id = auth.users.id`.
+* Confirmed room metadata loads from Supabase instead of relying solely on localStorage.
+* Fixed the missing "Nieuwe kamer maken" button in Accountinstellingen → Mijn ruimtes.
+
+### Room Members
+
+* Confirmed owner membership rows are created in `room_members`.
+* Confirmed room ownership and membership relationships are stored in Supabase.
+* Verified `room_members` receives:
+
+  * room_id
+  * user_id
+  * email
+  * role
+  * display_name
+  * avatar
+  * onboarded
+  * status
+
+### Database Status
+
+Current Supabase tables:
+
+* profiles
+* rooms
+* room_members
+* events
+
+### Confirmed Working
+
+✅ Supabase Auth login
+✅ Supabase session persistence
+✅ Profile loading from database
+✅ Admin role loading from database
+✅ Room creation
+✅ Room persistence after refresh
+✅ Room membership creation
+✅ Room switching through Account Settings
+
+### Remaining Work
+
+#### High Priority
+
+* Persist the currently opened room after page refresh.
+* Restore the last opened room instead of always opening the default room.
+* Complete invite flow testing with a second account.
+
+#### Medium Priority
+
+* Finish editor onboarding flow.
+* Verify invite codes work end-to-end.
+* Verify room membership updates for invited users.
+* Verify role-based access between Admin, Editor and Viewer accounts.
+
+#### Future Features
+
+* Poly Pizza asset ingestion flow.
+* Real model upload pipeline.
+* Additional profile customization options.
+
+### Notes
+
+The project has now passed the first major Supabase milestone:
+authentication, profiles, rooms and memberships are stored in the database and survive page refreshes.
+
+The next major milestone is multi-account collaboration and invitation testing.
+
 ## Session Snapshot (2026-06-01 — Room/member Supabase wiring)
 
 ### Summary
