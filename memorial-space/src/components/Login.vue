@@ -68,17 +68,52 @@ const startLoadingAndEmit = async (useSupabase = false) => {
     try {
       // Try sign in with password if provided
       let session = null
-      if (password.value) {
-        const res = await supabase.auth.signInWithPassword({ email: email.value, password: password.value })
-        if (res.error) {
-          // try sign up then
-          await supabase.auth.signUp({ email: email.value, password: password.value })
-          const r2 = await supabase.auth.signInWithPassword({ email: email.value, password: password.value })
-          session = r2.data?.session
-        } else {
-          session = res.data?.session
-        }
-      } else {
+     if (password.value) {
+  const cleanEmail = email.value.trim()
+
+  const res = await supabase.auth.signInWithPassword({
+    email: cleanEmail,
+    password: password.value
+  })
+
+  console.log('LOGIN RES:', res)
+
+  if (res.error) {
+    console.error('LOGIN ERROR:', res.error.message)
+
+    const signupRes = await supabase.auth.signUp({
+      email: cleanEmail,
+      password: password.value
+    })
+
+    console.log('SIGNUP RES:', signupRes)
+
+    if (signupRes.error) {
+      console.error('SIGNUP ERROR:', signupRes.error.message)
+      alert('Supabase signup failed: ' + signupRes.error.message)
+      step.value = 'form'
+      return
+    }
+
+    const r2 = await supabase.auth.signInWithPassword({
+      email: cleanEmail,
+      password: password.value
+    })
+
+    console.log('SECOND LOGIN RES:', r2)
+
+    if (r2.error) {
+      console.error('SECOND LOGIN ERROR:', r2.error.message)
+      alert('Supabase login failed: ' + r2.error.message)
+      step.value = 'form'
+      return
+    }
+
+    session = r2.data?.session
+  } else {
+    session = res.data?.session
+  }
+} else {
         // create a temporary account for non-password roles (demo)
         const demoPassword = Math.random().toString(36).slice(2, 10) + 'A!'
         await supabase.auth.signUp({ email: email.value, password: demoPassword })
@@ -87,18 +122,58 @@ const startLoadingAndEmit = async (useSupabase = false) => {
       }
 
       // If session exists, use supabase user as source of truth
-      if (session && session.user) {
-        const u = session.user
-        const userObj = { email: u.email || email.value, role: role.value, displayName: displayName.value || (u.email && u.email.split('@')[0]) || 'Guest', avatar: chosenAvatar.value || '' , supabaseId: u.id }
-        if (remember.value) {
-          try { localStorage.setItem('audreyUser', JSON.stringify(userObj)) } catch (e) {}
-        }
-        try { logEvent('login.success', { role: role.value, method: 'supabase', invited: role.value === 'editor' }) } catch (e) {}
-        setTimeout(() => emit('login', userObj), 400)
-        return
-      }
+if (session && session.user) {
+  const u = session.user
+
+  const cleanEmail = u.email || email.value.trim()
+  const cleanDisplayName =
+    displayName.value || (cleanEmail && cleanEmail.split('@')[0]) || 'Guest'
+
+  const profilePayload = {
+    id: u.id,
+    email: cleanEmail,
+    role: role.value,
+    display_name: cleanDisplayName,
+    avatar: chosenAvatar.value || '',
+  }
+
+  const { data: profileData, error: profileError } = await supabase
+    .from('profiles')
+    .upsert(profilePayload)
+    .select()
+
+  console.log('PROFILE UPSERT DATA:', profileData)
+  console.log('PROFILE UPSERT ERROR:', profileError)
+
+  const userObj = {
+    email: cleanEmail,
+    role: role.value,
+    displayName: cleanDisplayName,
+    avatar: chosenAvatar.value || '',
+    supabaseId: u.id,
+  }
+
+  if (remember.value) {
+    try {
+      localStorage.setItem('audreyUser', JSON.stringify(userObj))
+    } catch (e) {}
+  }
+
+  try {
+    logEvent('login.success', {
+      role: role.value,
+      method: 'supabase',
+      invited: role.value === 'editor',
+    })
+  } catch (e) {}
+
+  setTimeout(() => emit('login', userObj), 400)
+  return
+}
     } catch (e) {
-      // fallthrough to local mock
+      console.error('Supabase login failed', e)
+      step.value = 'form'
+      return
     }
   }
 
@@ -123,7 +198,7 @@ const submitProfile = () => {
   if (remember.value) {
     try { localStorage.setItem('audreyUser', JSON.stringify(buildUserObject())) } catch (e) {}
   }
-  startLoadingAndEmit()
+  startLoadingAndEmit(true)
 }
 
 const pickAvatar = (dataUrl) => {

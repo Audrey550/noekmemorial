@@ -20,9 +20,126 @@ const inviteFlowActive = ref(false)
 const inviteStep = ref(1)
 
 const inviteData = ref({ firstName: '', lastName: '', avatar: null })
+const roomMembersCache = ref({})
+
+const getCurrentSupabaseUserId = (user = authUser.value) => user?.supabaseId || user?.id || user?.uid || null
+
+const normalizeRoomRow = (room) => ({
+  id: room.id,
+  name: room.name || `Kamer ${String(room.id).slice(0, 8)}`,
+  privacy: room.privacy || 'private',
+  inviteCode: room.invite_code || room.inviteCode || null,
+  theme: room.theme || null,
+  emptyRoom: !!(room.empty_room ?? room.emptyRoom),
+  ownerId: room.owner_id || room.ownerId || null,
+})
+
+const normalizeRoomMemberRow = (row) => ({
+  id: row.id,
+  room_id: row.room_id || row.roomId,
+  user_id: row.user_id || row.userId || null,
+  email: row.email || '',
+  role: row.role || 'editor',
+  displayName: row.display_name || row.displayName || '',
+  avatar: row.avatar || '',
+  onboarded: row.onboarded !== false,
+  status: row.status || 'active',
+})
+
+const loadRoomMetaFromStorage = (roomId) => {
+  try {
+    const raw = localStorage.getItem(`audreyRoom_${roomId}`)
+    return raw ? JSON.parse(raw) : {}
+  } catch (e) {
+    return {}
+  }
+}
+
+const setRoomMembersCache = (roomId, members) => {
+  roomMembersCache.value = {
+    ...roomMembersCache.value,
+    [roomId]: Array.isArray(members) ? members.map(normalizeRoomMemberRow) : [],
+  }
+}
+
+const loadRoomsFromSupabase = async (user = authUser.value) => {
+  const supabase = getSupabase()
+  const supabaseUserId = getCurrentSupabaseUserId(user)
+
+  if (!supabase || !supabaseUserId) {
+    return null
+  }
+
+  try {
+    const [ownedRoomsResult, membershipsResult] = await Promise.all([
+      supabase
+        .from('rooms')
+        .select('id,name,privacy,invite_code,theme,empty_room,owner_id,created_at')
+        .eq('owner_id', supabaseUserId),
+      supabase
+        .from('room_members')
+        .select('id,room_id,user_id,email,role,display_name,avatar,onboarded,status,created_at')
+        .or(`user_id.eq.${supabaseUserId},email.eq.${user.email}`),
+    ])
+
+    const ownedRooms = Array.isArray(ownedRoomsResult.data)
+      ? ownedRoomsResult.data.map(normalizeRoomRow)
+      : []
+    const members = Array.isArray(membershipsResult.data)
+      ? membershipsResult.data.map(normalizeRoomMemberRow)
+      : []
+
+    const roomIds = [...new Set(members.map((member) => member.room_id).filter(Boolean))]
+    const sharedRoomsResult = roomIds.length
+      ? await supabase
+        .from('rooms')
+        .select('id,name,privacy,invite_code,theme,empty_room,owner_id,created_at')
+        .in('id', roomIds)
+      : { data: [] }
+
+    const sharedRooms = Array.isArray(sharedRoomsResult.data)
+      ? sharedRoomsResult.data.map(normalizeRoomRow)
+      : []
+
+    for (const roomId of roomIds) {
+      setRoomMembersCache(roomId, members.filter((member) => member.room_id === roomId))
+    }
+
+    return { ownedRooms, sharedRooms, members }
+  } catch (error) {
+    return null
+  }
+}
+
+const loadAdminRoomsFromSupabase = async (user = authUser.value) => {
+  const supabase = getSupabase()
+  const supabaseUserId = getCurrentSupabaseUserId(user)
+  if (!supabase || !supabaseUserId) {
+    return false
+  }
+
+  try {
+    const { data } = await supabase
+      .from('rooms')
+      .select('id,name,privacy,invite_code,theme,empty_room,owner_id,created_at')
+      .eq('owner_id', supabaseUserId)
+
+    adminRooms.value = Array.isArray(data) ? data.map(normalizeRoomRow) : []
+    return true
+  } catch (error) {
+    return false
+  }
+}
 
 const isMemberOnboarded = (email, roomId) => {
   if (!email || !roomId) return false
+  const cached = roomMembersCache.value?.[roomId]
+  if (Array.isArray(cached)) {
+    const found = cached.find((member) => member.email === email)
+    if (found) {
+      return !!found.onboarded
+    }
+  }
   try {
     const raw = localStorage.getItem(`audreyRoomMembers_${roomId}`)
     if (!raw) return false
@@ -34,16 +151,66 @@ const isMemberOnboarded = (email, roomId) => {
   }
 }
 
-const saveMemberAndProfile = (roomId, profile) => {
+const saveMemberAndProfile = async (roomId, profile) => {
+  const supabase = getSupabase()
+  if (!supabase) return
+
+  const { data: userData } = await supabase.auth.getUser()
+  const supabaseUserId = userData?.user?.id
+
+  const email = userData?.user?.email || ''
+
+  const nextMember = {
+    id: `m_${Date.now()}`,
+    room_id: roomId,
+    user_id: supabaseUserId,   // IMPORTANT (add this if missing)
+    email,
+    role: 'editor',
+    displayName: profile.displayName || '',
+    avatar: profile.avatar || '',
+    onboarded: true,
+    status: 'active',
+  }
+
+  await supabase.from('room_members').insert(nextMember)
+
   try {
     const key = `audreyRoomMembers_${roomId}`
     const raw = localStorage.getItem(key)
     const arr = raw ? JSON.parse(raw) : []
-    const id = `m_${Date.now()}`
-    const member = { id, email: authUser.value?.email || '', role: 'editor', displayName: profile.displayName || '', avatar: profile.avatar || '', onboarded: true }
-    arr.push(member)
+    arr.push(nextMember)
     localStorage.setItem(key, JSON.stringify(arr))
+    setRoomMembersCache(roomId, arr)
   } catch (e) {}
+
+  if (supabase && roomId && email) {
+    void supabase
+      .from('room_members')
+      .select('id')
+      .eq('room_id', roomId)
+      .eq('email', email)
+      .maybeSingle()
+      .then(async (result) => {
+        const payload = {
+          room_id: roomId,
+          user_id: supabaseUserId,
+          email,
+          role: 'editor',
+          display_name: profile.displayName || '',
+          avatar: profile.avatar || '',
+          onboarded: true,
+          status: 'active',
+        }
+
+        if (result?.data?.id) {
+          await supabase.from('room_members').update(payload).eq('id', result.data.id)
+          return
+        }
+
+        await supabase.from('room_members').insert(payload)
+      })
+      .catch((e) => console.error(e))
+  }
   // update local user profile too
   if (authUser.value) {
     authUser.value.displayName = profile.displayName || authUser.value.displayName
@@ -53,19 +220,18 @@ const saveMemberAndProfile = (roomId, profile) => {
 }
 
 const getRoomMeta = (roomId) => {
-  try {
-    const raw = localStorage.getItem(`audreyRoom_${roomId}`)
-    return raw ? JSON.parse(raw) : {}
-  } catch (e) { return {} }
+  return loadRoomMetaFromStorage(roomId)
 }
 
-const refreshAccessibleRooms = (user = authUser.value) => {
+const refreshAccessibleRooms = async (user = authUser.value) => {
   if (!user || !user.email) {
     accessibleRooms.value = []
+    roomMembersCache.value = {}
     return
   }
 
   const roomsById = new Map()
+  const remoteRooms = await loadRoomsFromSupabase(user)
 
   if (user.role === 'admin') {
     adminRooms.value.forEach((room) => {
@@ -75,6 +241,41 @@ const refreshAccessibleRooms = (user = authUser.value) => {
         privacy: room.privacy || 'private',
         role: 'admin',
         createdByMe: true,
+      })
+    })
+  }
+
+  if (remoteRooms) {
+    if (user.role === 'admin' && remoteRooms.ownedRooms.length > 0) {
+      adminRooms.value = remoteRooms.ownedRooms.map((room) => ({
+        id: room.id,
+        name: room.name,
+        privacy: room.privacy || 'private',
+        inviteCode: room.inviteCode || null,
+      }))
+    }
+
+    remoteRooms.ownedRooms.forEach((room) => {
+      roomsById.set(room.id, {
+        id: room.id,
+        name: room.name,
+        privacy: room.privacy || 'private',
+        inviteCode: room.inviteCode || null,
+        role: user.role === 'admin' ? 'admin' : 'editor',
+        createdByMe: true,
+      })
+    })
+
+    remoteRooms.sharedRooms.forEach((room) => {
+      const member = remoteRooms.members.find((entry) => entry.room_id === room.id)
+      if (!member) return
+      roomsById.set(room.id, {
+        id: room.id,
+        name: room.name,
+        privacy: room.privacy || 'private',
+        inviteCode: room.inviteCode || null,
+        role: member.role || 'editor',
+        createdByMe: false,
       })
     })
   }
@@ -95,7 +296,10 @@ const refreshAccessibleRooms = (user = authUser.value) => {
           members = []
         }
 
-        const member = members.find((entry) => entry.email === user.email)
+        const normalizedMembers = members.map(normalizeRoomMemberRow)
+        setRoomMembersCache(roomId, normalizedMembers)
+
+        const member = normalizedMembers.find((entry) => entry.email === user.email)
         if (!member) return
 
         const meta = getRoomMeta(roomId)
@@ -103,6 +307,7 @@ const refreshAccessibleRooms = (user = authUser.value) => {
           id: roomId,
           name: meta.name || `Kamer ${roomId}`,
           privacy: meta.privacy || 'private',
+          inviteCode: meta.inviteCode || null,
           role: member.role || 'editor',
           createdByMe: !!member.createdByMe,
         })
@@ -144,6 +349,8 @@ const toggleReveal = (id) => {
 }
 
 const getInviteCode = (id) => {
+  const room = adminRooms.value.find((entry) => entry.id === id) || accessibleRooms.value.find((entry) => entry.id === id)
+  if (room?.inviteCode) return room.inviteCode
   try {
     const raw = localStorage.getItem(`audreyRoom_${id}`)
     if (!raw) return null
@@ -168,25 +375,56 @@ onMounted(() => {
   // If Supabase is configured, subscribe to auth state changes
   const supabase = getSupabase()
   if (supabase) {
+  supabase.auth.getUser().then(({ data, error }) => {
+    console.log('SUPABASE AUTH USER:', data?.user)
+    console.log('SUPABASE AUTH ERROR:', error)
+  })
     // initialize from supabase current user if available
-    supabase.auth.getUser().then(res => {
-      const u = res.data?.user
-      if (u) {
-        const stored = localStorage.getItem('audreyUser')
-        if (!stored) {
-          const userObj = { email: u.email, role: 'viewer', displayName: (u.email && u.email.split('@')[0]) || 'User', avatar: '', supabaseId: u.id }
-          authUser.value = userObj
-          try { localStorage.setItem('audreyUser', JSON.stringify(userObj)) } catch (e) {}
-        }
-      }
-    })
+supabase.auth.getUser().then(async res => {
+  const u = res.data?.user
+
+  if (u) {
+    const { data: profile, error } = await supabase
+      .from('profiles')
+      .select('role, display_name, avatar')
+      .eq('id', u.id)
+      .maybeSingle()
+
+    console.log('PROFILE LOAD DATA:', profile)
+    console.log('PROFILE LOAD ERROR:', error)
+
+    const userObj = {
+      email: u.email,
+      role: profile?.role || 'viewer',
+      displayName:
+        profile?.display_name ||
+        (u.email && u.email.split('@')[0]) ||
+        'User',
+      avatar: profile?.avatar || '',
+      supabaseId: u.id,
+    }
+
+    authUser.value = userObj
+
+    try {
+      localStorage.setItem('audreyUser', JSON.stringify(userObj))
+    } catch (e) {}
+  }
+})
 
     supabase.auth.onAuthStateChange((event, session) => {
       if (session && session.user) {
         const u = session.user
-        const userObj = { email: u.email, role: authUser.value?.role || 'viewer', displayName: (u.email && u.email.split('@')[0]) || 'User', avatar: authUser.value?.avatar || '', supabaseId: u.id }
+        let pendingRole = 'viewer'
+        try {
+          pendingRole = localStorage.getItem('audreyPendingRole') || authUser.value?.role || 'viewer'
+          localStorage.removeItem('audreyPendingRole')
+        } catch (e) {}
+        const userObj = { email: u.email, role: pendingRole, displayName: (u.email && u.email.split('@')[0]) || 'User', avatar: authUser.value?.avatar || '', supabaseId: u.id }
         authUser.value = userObj
         try { localStorage.setItem('audreyUser', JSON.stringify(userObj)) } catch (e) {}
+        void loadAdminRoomsFromSupabase(userObj)
+        void refreshAccessibleRooms(userObj)
       } else {
         // signed out
         // keep local mock behavior
@@ -233,7 +471,8 @@ onMounted(() => {
     }
   } catch (e) {}
 
-  refreshAccessibleRooms(authUser.value)
+  void loadAdminRoomsFromSupabase(authUser.value)
+  void refreshAccessibleRooms(authUser.value)
 })
 
 const handleLogin = (user) => {
@@ -241,20 +480,23 @@ const handleLogin = (user) => {
   try { localStorage.setItem('audreyUser', JSON.stringify(user)) } catch (e) {}
   // Load or initialize rooms for admin users
   if (user.role === 'admin') {
-    const key = `audreyRooms_${user.email}`
-    try {
-      const stored = localStorage.getItem(key)
-      adminRooms.value = stored ? JSON.parse(stored) : []
-    } catch (e) {
-      adminRooms.value = []
-    }
-    // Always show the admin room list so admins can choose which room to manage
+    void loadAdminRoomsFromSupabase(user)
     if (adminRooms.value.length === 0) {
-      // create a default room for admin but keep the list visible
-      const id = `room_${Date.now()}`
-      const room = { id, name: 'Mijn Kamer', privacy: 'private' }
-      adminRooms.value.push(room)
-      try { localStorage.setItem(key, JSON.stringify(adminRooms.value)) } catch (e) {}
+      const key = `audreyRooms_${user.email}`
+      try {
+        const stored = localStorage.getItem(key)
+        adminRooms.value = stored ? JSON.parse(stored) : []
+      } catch (e) {
+        adminRooms.value = []
+      }
+      // Always show the admin room list so admins can choose which room to manage
+      if (adminRooms.value.length === 0) {
+        // create a default room for admin but keep the list visible
+        const id = `room_${Date.now()}`
+        const room = { id, name: 'Mijn Kamer', privacy: 'private' }
+        adminRooms.value.push(room)
+        try { localStorage.setItem(key, JSON.stringify(adminRooms.value)) } catch (e) {}
+      }
     }
     selectedRoomId.value = null
     showRoomList.value = true
@@ -267,13 +509,14 @@ const handleLogin = (user) => {
     }
   }
 
-  refreshAccessibleRooms(user)
+  void refreshAccessibleRooms(user)
 }
 
 const logout = () => {
   authUser.value = null
   try { localStorage.removeItem('audreyUser') } catch (e) {}
   accessibleRooms.value = []
+  roomMembersCache.value = {}
 }
 
 const createRoom = () => {
@@ -292,40 +535,82 @@ const generateInviteCodeForNewRoom = () => {
   newRoomInviteCode.value = code
 }
 
-const createRoomConfirmed = () => {
+const createRoomConfirmed = async () => {
   if (!authUser.value) return
+
   const email = authUser.value.email
   const key = `audreyRooms_${email}`
-  const id = `room_${Date.now()}`
-  const roomName = newRoomName.value && newRoomName.value.trim().length ? newRoomName.value.trim() : `Kamer ${adminRooms.value.length + 1}`
-  // Create room meta with an explicit empty-room flag so the editor can
-  // initialize an empty scene (no wallpaper, default grey floor, no objects).
-  const room = { id, name: roomName, privacy: newRoomPrivacy.value }
-  adminRooms.value.push(room)
-  try { localStorage.setItem(key, JSON.stringify(adminRooms.value)) } catch (e) {}
-  // persist room meta (privacy, inviteCode, name)
-  try {
-    const meta = { privacy: newRoomPrivacy.value, inviteCode: newRoomInviteCode.value || null, name: roomName }
-    // Mark this new room as intentionally empty by default so admins get
-    // an empty canvas when they create it.
-    meta.emptyRoom = true
-    // Provide a default theme that disables textures/colors so the room
-    // starts empty with neutral white/grey surfaces (no wallpaper or
-    // floor texture). This is intentional for newly created rooms.
-    meta.theme = { presetId: 'soft-pink', useTextures: false, useColor: false }
-    localStorage.setItem(`audreyRoom_${id}`, JSON.stringify(meta))
-    // Also initialize an explicit per-room scene entry (empty objects array)
-    const emptyScene = { version: 1, timestamp: new Date().toISOString(), objects: [] }
-    try { localStorage.setItem(`audreyRoomScene_${id}`, JSON.stringify(emptyScene)) } catch (e) {}
-  } catch (e) {}
-  selectedRoomId.value = id
-  showRoomList.value = false
-  showCreateRoomModal.value = false
-  refreshAccessibleRooms()
-  // reset modal state
-  newRoomName.value = ''
-  newRoomPrivacy.value = 'private'
-  newRoomInviteCode.value = null
+
+  const id =
+    typeof crypto !== 'undefined' && crypto.randomUUID
+      ? crypto.randomUUID()
+      : `room_${Date.now()}`
+
+  const roomName =
+    newRoomName.value && newRoomName.value.trim().length
+      ? newRoomName.value.trim()
+      : `Kamer ${adminRooms.value.length + 1}`
+
+  console.log('CREATE ROOM CALLED', {
+    id,
+    roomName,
+    user: authUser.value?.email
+  })
+
+  const supabase = getSupabase()
+const { data: userData } = await supabase.auth.getUser()
+const supabaseUserId = userData?.user?.id
+
+console.log('ROOM INSERT USER ID:', supabaseUserId)
+
+if (supabase && supabaseUserId) {
+  const { data, error } = await supabase
+    .from('rooms')
+    .insert({
+      id,
+      owner_id: supabaseUserId,
+      name: roomName,
+      privacy: newRoomPrivacy.value,
+      invite_code: newRoomInviteCode.value || null,
+      theme: { presetId: 'soft-pink', useTextures: false, useColor: false },
+      empty_room: true,
+    })
+    .select()
+
+  console.log('ROOM INSERT DATA:', data)
+  console.log('ROOM INSERT ERROR:', error)
+
+  if (!error) {
+    const { data: memberData, error: memberError } = await supabase
+      .from('room_members')
+      .insert({
+        room_id: id,
+        user_id: supabaseUserId,
+        email: userData?.user?.email || authUser.value.email,
+        role: 'admin',
+        display_name: authUser.value.displayName || '',
+        avatar: authUser.value.avatar || '',
+        onboarded: true,
+        status: 'active',
+      })
+      .select()
+
+    console.log('ROOM MEMBER INSERT DATA:', memberData)
+    console.log('ROOM MEMBER INSERT ERROR:', memberError)
+  }
+}
+
+await loadAdminRoomsFromSupabase(authUser.value)
+await refreshAccessibleRooms(authUser.value)
+
+selectedRoomId.value = id
+showRoomList.value = false
+showCreateRoomModal.value = false
+
+// reset modal state
+newRoomName.value = ''
+newRoomPrivacy.value = 'private'
+newRoomInviteCode.value = null
 }
 
 const cancelCreateRoom = () => {
@@ -341,13 +626,18 @@ const removeRoom = (id) => {
   const key = `audreyRooms_${email}`
   adminRooms.value = adminRooms.value.filter(r => r.id !== id)
   try { localStorage.setItem(key, JSON.stringify(adminRooms.value)) } catch (e) {}
-  refreshAccessibleRooms()
+  const supabase = getSupabase()
+  if (supabase) {
+    void supabase.from('room_members').delete().eq('room_id', id).catch((e) => console.error(e))
+    void supabase.from('rooms').delete().eq('id', id).catch((e) => console.error(e))
+  }
+  void refreshAccessibleRooms()
 }
 
 const openRoom = (id) => {
   selectedRoomId.value = id
   showRoomList.value = false
-  refreshAccessibleRooms()
+  void refreshAccessibleRooms()
 }
 
 const openFirst = () => {
@@ -355,7 +645,7 @@ const openFirst = () => {
     // open the most recently added/edited room (last in array)
     selectedRoomId.value = adminRooms.value[adminRooms.value.length - 1].id
     showRoomList.value = false
-    refreshAccessibleRooms()
+    void refreshAccessibleRooms()
   }
 }
 
@@ -379,7 +669,11 @@ const handleRoomUpdated = ({ id, name }) => {
   if (changed) {
     try { localStorage.setItem(key, JSON.stringify(adminRooms.value)) } catch (e) {}
   }
-  refreshAccessibleRooms()
+  const supabase = getSupabase()
+  if (supabase) {
+    void supabase.from('rooms').update({ name }).eq('id', id).catch((e) => console.error(e))
+  }
+  void refreshAccessibleRooms()
 }
 </script>
 
@@ -518,34 +812,6 @@ const handleRoomUpdated = ({ id, name }) => {
             <button class="btn" @click="openFirst">Laatst geopend</button>
           </div>
           
-          <div v-if="showCreateRoomModal" class="modal-backdrop" style="position:fixed;inset:0;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,0.5);z-index:10050;">
-            <div class="modal-card" style="width:520px;max-width:92%;padding:18px;z-index:10051;border-radius:12px;box-shadow:0 18px 40px rgba(0,0,0,0.3);background:#ffffff;color:#1a1a1a;">
-              <div style="display:flex;justify-content:space-between;align-items:center">
-                <h3>Nieuwe kamer maken</h3>
-              </div>
-
-              <div style="margin-top:12px;display:flex;flex-direction:column;gap:10px">
-                <label>Naam van kamer</label>
-                <input v-model="newRoomName" placeholder="Bijv. Herinneringen aan Oma" style="padding:8px;border-radius:8px;border:1px solid #e6e6ee" />
-
-                <div style="display:flex;gap:8px;align-items:center">
-                  <div style="font-weight:600">Privacy:</div>
-                  <label style="display:flex;align-items:center;gap:8px"><input type="radio" v-model="newRoomPrivacy" value="private" /> Privé</label>
-                  <label style="display:flex;align-items:center;gap:8px"><input type="radio" v-model="newRoomPrivacy" value="public" /> Openbaar</label>
-                </div>
-
-                <div v-if="newRoomPrivacy === 'private'" style="display:flex;gap:8px;align-items:center">
-                  <button class="btn" @click="generateInviteCodeForNewRoom">Genereer uitnodigingscode</button>
-                  <div style="font-size:13px;color:#333">{{ newRoomInviteCode ? ('Code: ' + newRoomInviteCode) : 'Nog geen code' }}</div>
-                </div>
-              </div>
-
-              <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:18px">
-                <button class="btn" @click="cancelCreateRoom">Annuleren</button>
-                <button class="btn" @click="createRoomConfirmed">Maak aan</button>
-              </div>
-            </div>
-          </div>
         </div>
       </div>
 
@@ -571,29 +837,36 @@ const handleRoomUpdated = ({ id, name }) => {
           @create-room="createRoom"
         />
       </div>
+
+      <div v-if="showCreateRoomModal" class="modal-backdrop" style="position:fixed;inset:0;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,0.5);z-index:10050;">
+        <div class="modal-card" style="width:520px;max-width:92%;padding:18px;z-index:10051;border-radius:12px;box-shadow:0 18px 40px rgba(0,0,0,0.3);background:#ffffff;color:#1a1a1a;">
+          <div style="display:flex;justify-content:space-between;align-items:center">
+            <h3>Nieuwe kamer maken</h3>
+          </div>
+
+          <div style="margin-top:12px;display:flex;flex-direction:column;gap:10px">
+            <label>Naam van kamer</label>
+            <input v-model="newRoomName" placeholder="Bijv. Herinneringen aan Oma" style="padding:8px;border-radius:8px;border:1px solid #e6e6ee" />
+
+            <div style="display:flex;gap:8px;align-items:center">
+              <div style="font-weight:600">Privacy:</div>
+              <label style="display:flex;align-items:center;gap:8px"><input type="radio" v-model="newRoomPrivacy" value="private" /> Privé</label>
+              <label style="display:flex;align-items:center;gap:8px"><input type="radio" v-model="newRoomPrivacy" value="public" /> Openbaar</label>
+            </div>
+
+            <div v-if="newRoomPrivacy === 'private'" style="display:flex;gap:8px;align-items:center">
+              <button class="btn" @click="generateInviteCodeForNewRoom">Genereer uitnodigingscode</button>
+              <div style="font-size:13px;color:#333">{{ newRoomInviteCode ? ('Code: ' + newRoomInviteCode) : 'Nog geen code' }}</div>
+            </div>
+          </div>
+
+          <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:18px">
+            <button class="btn" @click="cancelCreateRoom">Annuleren</button>
+            <button class="btn" @click="createRoomConfirmed">Maak aan</button>
+          </div>
+        </div>
+      </div>
     </div>
   </div>
 </template>
 
-<script>
-export default {
-  methods: {
-    createRoom() {
-      const email = authUser.value.email
-      const key = `audreyRooms_${email}`
-      const id = `room_${Date.now()}`
-      const room = { id, name: `Room ${adminRooms.value.length + 1}`, privacy: 'private' }
-      adminRooms.value.push(room)
-      try { localStorage.setItem(key, JSON.stringify(adminRooms.value)) } catch (e) {}
-      selectedRoomId.value = id
-      showRoomList.value = false
-    },
-    removeRoom(id) {
-      const email = authUser.value.email
-      const key = `audreyRooms_${email}`
-      adminRooms.value = adminRooms.value.filter(r => r.id !== id)
-      try { localStorage.setItem(key, JSON.stringify(adminRooms.value)) } catch (e) {}
-    }
-  }
-}
-</script>

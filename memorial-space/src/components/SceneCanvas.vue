@@ -976,11 +976,94 @@ const confirmResetRoom = () => {
   showNotification('Kamer is gereset', 'success', 2600)
 }
 
-// Load/save basic room metadata (privacy & invite code) in localStorage for demo
-const loadRoomMeta = () => {
-  const id = props.roomId || 'default'
+const getRoomIdKey = () => props.roomId || 'default'
+
+const roomMetaStorageKey = () => `audreyRoom_${getRoomIdKey()}`
+
+const roomMembersStorageKey = () => `audreyRoomMembers_${getRoomIdKey()}`
+
+const normalizeRoomMemberRecord = (member) => ({
+  id: member.id,
+  email: member.email || '',
+  role: member.role || 'editor',
+  displayName: member.display_name || member.displayName || '',
+  avatar: member.avatar || '',
+  onboarded: member.onboarded !== false,
+  status: member.status || 'active',
+  createdByMe: !!member.createdByMe,
+})
+
+const syncRoomMetaToSupabase = async () => {
+  console.log('syncRoomMetaToSupabase called')
+  console.log('props.roomId:', props.roomId)
+
+  const supabase = getSupabase()
+
+  if (!supabase) {
+    console.log('No Supabase client found')
+    return
+  }
+
+  if (!props.roomId) {
+    console.log('No roomId found')
+    return
+  }
+
   try {
-    const stored = localStorage.getItem(`audreyRoom_${id}`)
+    console.log('ABOUT TO UPSERT ROOM', {
+    roomId: props.roomId,
+    name: roomName.value,
+    privacy: roomPrivacy.value,
+})
+    const { data, error } = await supabase
+      .from('rooms')
+      .upsert({
+        id: props.roomId,
+        name: roomName.value,
+        privacy: roomPrivacy.value,
+        invite_code: roomInviteCode.value || null,
+        theme: roomTheme.value,
+        empty_room: roomEmpty.value,
+      })
+      .select()
+
+    console.log('SUPABASE INSERT DATA:', data)
+    console.log('SUPABASE INSERT ERROR:', error)
+    
+    console.log('ROOM UPSERT')
+    console.log('DATA:', data)
+    console.log('ERROR:', error)
+
+  } catch (e) {
+    console.error('UPSERT EXCEPTION:', e)
+  }
+}
+
+const syncRoomMembersToSupabase = async () => {
+  const supabase = getSupabase()
+  if (!supabase || !props.roomId) return
+
+  try {
+    for (const member of roomMembers.value) {
+      await supabase.from('room_members').upsert({
+        id: member.id,
+        room_id: props.roomId,
+        email: member.email || '',
+        role: member.role || 'editor',
+        display_name: member.displayName || '',
+        avatar: member.avatar || '',
+        onboarded: member.onboarded !== false,
+        status: member.status || 'active',
+      })
+    }
+  } catch (e) {}
+}
+
+// Load/save basic room metadata (privacy & invite code) from Supabase with a local fallback.
+const loadRoomMeta = async () => {
+  const id = getRoomIdKey()
+  try {
+    const stored = localStorage.getItem(roomMetaStorageKey())
     if (stored) {
       const data = JSON.parse(stored)
       roomPrivacy.value = data.privacy || 'private'
@@ -1004,25 +1087,60 @@ const loadRoomMeta = () => {
     roomEmpty.value = false
   }
 
+  const supabase = getSupabase()
+  if (supabase && props.roomId) {
+    try {
+      const { data } = await supabase
+        .from('rooms')
+        .select('id,name,privacy,invite_code,theme,empty_room')
+        .eq('id', props.roomId)
+        .maybeSingle()
+
+      if (data) {
+        roomPrivacy.value = data.privacy || roomPrivacy.value || 'private'
+        roomInviteCode.value = data.invite_code || null
+        roomName.value = data.name || roomName.value || ''
+        roomTheme.value = normalizeRoomThemeState(data.theme || roomTheme.value)
+        roomEmpty.value = !!data.empty_room
+      }
+    } catch (e) {}
+  }
+
   // load members
   try {
-    const mem = localStorage.getItem(`audreyRoomMembers_${id}`)
+    const mem = localStorage.getItem(roomMembersStorageKey())
     roomMembers.value = mem ? JSON.parse(mem) : []
   } catch (e) {
     roomMembers.value = []
+  }
+
+  if (supabase && props.roomId) {
+    try {
+      const { data } = await supabase
+        .from('room_members')
+        .select('id,email,role,display_name,avatar,onboarded,status')
+        .eq('room_id', props.roomId)
+
+      if (Array.isArray(data)) {
+        roomMembers.value = data.map(normalizeRoomMemberRecord)
+      }
+    } catch (e) {}
   }
   // analytics: room opened
   try { logEvent('room.opened', { roomId: id, privacy: roomPrivacy.value }) } catch (e) {}
 }
 
-const saveRoomMeta = () => {
-  const id = props.roomId || 'default'
+const saveRoomMeta = async () => {
+  const id = getRoomIdKey()
   try {
-    localStorage.setItem(`audreyRoom_${id}`, JSON.stringify({ privacy: roomPrivacy.value, inviteCode: roomInviteCode.value, name: roomName.value, theme: roomTheme.value, emptyRoom: roomEmpty.value }))
+    localStorage.setItem(roomMetaStorageKey(), JSON.stringify({ privacy: roomPrivacy.value, inviteCode: roomInviteCode.value, name: roomName.value, theme: roomTheme.value, emptyRoom: roomEmpty.value }))
   } catch (e) {}
   try {
-    localStorage.setItem(`audreyRoomMembers_${id}`, JSON.stringify(roomMembers.value))
+    localStorage.setItem(roomMembersStorageKey(), JSON.stringify(roomMembers.value))
   } catch (e) {}
+
+  await syncRoomMetaToSupabase()
+  await syncRoomMembersToSupabase()
 
   // notify parent that room metadata changed (e.g., name)
   try { emit('room-updated', { id, name: roomName.value }) } catch (e) {}
@@ -1043,20 +1161,37 @@ const generateInviteCode = () => {
 }
 
 const loadRoomMembers = () => {
-  const id = props.roomId || 'default'
-  try {
-    const mem = localStorage.getItem(`audreyRoomMembers_${id}`)
-    roomMembers.value = mem ? JSON.parse(mem) : []
-  } catch (e) {
-    roomMembers.value = []
-  }
+  void (async () => {
+    const id = getRoomIdKey()
+    try {
+      const mem = localStorage.getItem(roomMembersStorageKey())
+      roomMembers.value = mem ? JSON.parse(mem) : []
+    } catch (e) {
+      roomMembers.value = []
+    }
+
+    const supabase = getSupabase()
+    if (supabase && props.roomId) {
+      try {
+        const { data } = await supabase
+          .from('room_members')
+          .select('id,email,role,display_name,avatar,onboarded,status')
+          .eq('room_id', props.roomId)
+
+        if (Array.isArray(data)) {
+          roomMembers.value = data.map(normalizeRoomMemberRecord)
+        }
+      } catch (e) {}
+    }
+  })()
 }
 
 const saveRoomMembers = () => {
-  const id = props.roomId || 'default'
+  const id = getRoomIdKey()
   try {
-    localStorage.setItem(`audreyRoomMembers_${id}`, JSON.stringify(roomMembers.value))
+    localStorage.setItem(roomMembersStorageKey(), JSON.stringify(roomMembers.value))
   } catch (e) {}
+  void syncRoomMembersToSupabase()
 }
 
 const applyRoomTheme = (themeUpdate, persist = true) => {
@@ -1242,9 +1377,14 @@ const deleteRoom = () => {
     return alert("Typ DELETE in het bevestigingsvak om het verwijderen van de kamer te bevestigen")
   }
   try {
-    localStorage.removeItem(`audreyRoom_${id}`)
-    localStorage.removeItem(`audreyRoomMembers_${id}`)
+    localStorage.removeItem(roomMetaStorageKey())
+    localStorage.removeItem(roomMembersStorageKey())
   } catch (e) {}
+  const supabase = getSupabase()
+  if (supabase) {
+    void supabase.from('room_members').delete().eq('room_id', id).catch((e) => console.error(e))
+    void supabase.from('rooms').delete().eq('id', id).catch((e) => console.error(e))
+  }
   try { logEvent('room.deleted', { roomId: id }) } catch (e) {}
   showRoomSettingsModal.value = false
   emit('room-deleted', id)
@@ -1864,7 +2004,7 @@ const handleAddAsset = (asset) => {
   pushUndoSnapshot()
   addObjectToScene(id).then(() => {
     persistCurrentRoomScene()
-  }).catch(() => {})
+  }).catch((e) => console.error(e))
   closeQuickPanel()
 }
 
@@ -4688,36 +4828,58 @@ onBeforeUnmount(() => {
             <div class="room-settings-label">Mijn ruimtes</div>
             <p class="room-settings-help">Hier zie je de ruimtes waartoe je toegang hebt.</p>
 
-            <div id="room-switcher-list" v-if="roomSwitcherRooms.length" class="room-switcher-list">
-              <div v-for="room in roomSwitcherRooms" :key="room.id" class="room-switcher-row" :class="{ active: room.id === props.roomId }">
-                <div class="room-switcher-meta">
-                  <div class="room-switcher-name">{{ room.name }}</div>
-                  <div class="room-switcher-subtitle">
-                    <span>{{ room.role === 'admin' ? 'Admin' : room.role === 'viewer' ? 'Viewer' : 'Co-editor' }}</span>
-                    <span>·</span>
-                    <span>{{ room.privacy === 'private' ? 'Privé' : 'Openbaar' }}</span>
-                    <span v-if="room.id === props.roomId">· Huidige ruimte</span>
-                  </div>
-                </div>
-                <span v-if="room.unreadModeratorNotifications > 0" class="room-switcher-badge">{{ room.unreadModeratorNotifications }}</span>
-                <button
-                  type="button"
-                  class="room-switcher-button"
-                  :disabled="room.id === props.roomId"
-                  @click="selectRoom(room.id)"
-                >
-                  {{ room.id === props.roomId ? 'Geopend' : 'Openen' }}
-                </button>
-              </div>
-            </div>
-
-            <div v-else class="room-members-empty">
-              <div>Nog geen andere ruimtes gevonden.</div>
-              <button v-if="props.currentUser && props.currentUser.role === 'admin'" type="button" class="room-switcher-button room-switcher-empty-button" @click="openCreateRoom">
-                Nieuwe kamer maken
-              </button>
-            </div>
+              <div id="room-switcher-list" v-if="roomSwitcherRooms.length" class="room-switcher-list">
+        <div
+        v-for="room in roomSwitcherRooms"
+        :key="room.id"
+        class="room-switcher-row"
+        :class="{ active: room.id === props.roomId }"
+      >
+        <div class="room-switcher-meta">
+          <div class="room-switcher-name">{{ room.name }}</div>
+          <div class="room-switcher-subtitle">
+            <span>{{ room.role === 'admin' ? 'Admin' : room.role === 'viewer' ? 'Viewer' : 'Co-editor' }}</span>
+            <span>·</span>
+            <span>{{ room.privacy === 'private' ? 'Privé' : 'Openbaar' }}</span>
+            <span v-if="room.id === props.roomId">· Huidige ruimte</span>
           </div>
+        </div>
+
+        <span
+          v-if="room.unreadModeratorNotifications > 0"
+          class="room-switcher-badge"
+        >
+          {{ room.unreadModeratorNotifications }}
+        </span>
+
+        <button
+          type="button"
+          class="room-switcher-button"
+          :disabled="room.id === props.roomId"
+          @click="selectRoom(room.id)"
+        >
+          {{ room.id === props.roomId ? 'Geopend' : 'Openen' }}
+        </button>
+      </div>
+    </div>
+
+    <div v-else class="room-members-empty">
+      <div>Nog geen andere ruimtes gevonden.</div>
+    </div>
+
+    <div
+      v-if="props.currentUser && props.currentUser.role === 'admin'"
+      style="margin-top:12px;display:flex;justify-content:flex-end"
+    >
+      <button
+        type="button"
+        class="room-switcher-button"
+        @click="openCreateRoom"
+      >
+        Nieuwe kamer maken
+      </button>
+    </div>
+        </div>
 
           <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:18px">
             <button @click="showAdminSettingsModal = false" style="padding:8px 12px;border-radius:8px">Annuleren</button>
