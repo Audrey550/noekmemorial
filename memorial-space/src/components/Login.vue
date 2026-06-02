@@ -32,23 +32,31 @@ const proceedFromForm = async () => {
   // basic validation
   if (!email.value) email.value = 'guest@example.com'
 
-  if (role.value === 'admin' && !password.value) {
-    alert('Voer een wachtwoord in voor admin (demo)')
+  if ((role.value === 'admin' || role.value === 'editor') && !password.value) {
+    alert('Voer een wachtwoord in voor deze rol (demo)')
     return
   }
 
   const supabase = getSupabase()
 
   if (role.value === 'editor') {
-    if (!inviteCode.value) {
-      alert('Voer een uitnodigingscode in voor co-editor (demo)')
+    if (inviteCode.value && inviteCode.value.trim()) {
+      try { logEvent('invite.validated', { role: 'editor' }) } catch (e) {}
+
+      // New invited editor: go through profile setup
+      displayName.value = email.value.split('@')[0]
+      chosenAvatar.value = createAvatarDataUrl(displayName.value)
+      step.value = 'profile'
       return
     }
-    try { logEvent('invite.validated', { role: 'editor' }) } catch (e) {}
-    // go to profile selection for invited users
-    displayName.value = email.value.split('@')[0]
-    chosenAvatar.value = createAvatarDataUrl(displayName.value)
-    step.value = 'profile'
+
+    // Returning editor: no invite code needed, just login
+    if (supabase) {
+      startLoadingAndEmit(true)
+    } else {
+      startLoadingAndEmit(false)
+    }
+
     return
   }
 
@@ -122,6 +130,8 @@ const startLoadingAndEmit = async (useSupabase = false) => {
       }
 
       // If session exists, use supabase user as source of truth
+let invitedRoomForUser = null
+
 if (session && session.user) {
   const u = session.user
 
@@ -145,12 +155,56 @@ if (session && session.user) {
   console.log('PROFILE UPSERT DATA:', profileData)
   console.log('PROFILE UPSERT ERROR:', profileError)
 
+  if (role.value === 'editor' && inviteCode.value) {
+  const cleanInviteCode = inviteCode.value.trim()
+
+  const { data: invitedRoom, error: roomLookupError } = await supabase
+    .from('rooms')
+    .select('id,name,privacy,invite_code')
+    .eq('invite_code', cleanInviteCode)
+    .maybeSingle()
+
+  console.log('INVITED ROOM DATA:', invitedRoom)
+  console.log('INVITED ROOM ERROR:', roomLookupError)
+
+  if (roomLookupError || !invitedRoom) {
+    alert('Geen kamer gevonden met deze uitnodigingscode.')
+    step.value = 'form'
+    return
+  }
+
+  invitedRoomForUser = invitedRoom
+
+  const { data: memberData, error: memberError } = await supabase
+    .from('room_members')
+    .upsert(
+      {
+        room_id: invitedRoom.id,
+        user_id: u.id,
+        email: cleanEmail,
+        role: 'editor',
+        display_name: cleanDisplayName,
+        avatar: chosenAvatar.value || '',
+        onboarded: true,
+        status: 'active',
+      },
+      {
+        onConflict: 'room_id,user_id',
+      }
+    )
+    .select()
+
+  console.log('INVITE MEMBER DATA:', memberData)
+  console.log('INVITE MEMBER ERROR:', memberError)
+}
+
   const userObj = {
     email: cleanEmail,
     role: role.value,
     displayName: cleanDisplayName,
     avatar: chosenAvatar.value || '',
     supabaseId: u.id,
+    invitedRoomId: role.value === 'editor' ? invitedRoomForUser?.id : null,  
   }
 
   if (remember.value) {
@@ -167,7 +221,9 @@ if (session && session.user) {
     })
   } catch (e) {}
 
-  setTimeout(() => emit('login', userObj), 400)
+  console.log('LOGIN USER OBJ:', userObj)
+
+  emit('login', userObj)
   return
 }
     } catch (e) {
@@ -233,7 +289,7 @@ const onUpload = (e) => {
           <option value="viewer">Kijker (publieke link)</option>
         </select>
 
-        <div v-if="role === 'admin'" style="margin-top:8px">
+        <div v-if="role === 'admin' || role === 'editor'" style="margin-top:8px">
           <label style="font-size:13px;color:#333">Wachtwoord (demo)</label>
           <input type="password" v-model="password" placeholder="wachtwoord" style="width:100%;padding:8px;margin:6px 0;border:1px solid #e6e6ee;border-radius:6px" />
         </div>
