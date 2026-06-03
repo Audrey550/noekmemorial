@@ -320,6 +320,11 @@ const refreshAccessibleRooms = async (user = authUser.value) => {
 const handleRoomSelected = (roomId) => {
   selectedRoomId.value = roomId
   showRoomList.value = false
+
+  try {
+    localStorage.setItem('audreySelectedRoomId', roomId)
+  } catch (e) {}
+
   refreshAccessibleRooms()
 }
 
@@ -406,9 +411,22 @@ supabase.auth.getUser().then(async res => {
 
     authUser.value = userObj
 
-    try {
-      localStorage.setItem('audreyUser', JSON.stringify(userObj))
-    } catch (e) {}
+try {
+  localStorage.setItem('audreyUser', JSON.stringify(userObj))
+} catch (e) {}
+
+await loadAdminRoomsFromSupabase(userObj)
+await refreshAccessibleRooms(userObj)
+
+const savedRoomId = localStorage.getItem('audreySelectedRoomId')
+const canOpenSavedRoom =
+  savedRoomId &&
+  accessibleRooms.value.some((room) => room.id === savedRoomId)
+
+if (canOpenSavedRoom) {
+  selectedRoomId.value = savedRoomId
+  showRoomList.value = false
+}
   }
 })
 
@@ -477,6 +495,17 @@ const handleLogin = async (user) => {
   if (user.role === 'admin') {
     await loadAdminRoomsFromSupabase(user)
     await refreshAccessibleRooms(user)
+
+    const savedRoomId = localStorage.getItem('audreySelectedRoomId')
+    const canOpenSavedRoom =
+      savedRoomId &&
+      accessibleRooms.value.some((room) => room.id === savedRoomId)
+
+    if (canOpenSavedRoom) {
+      selectedRoomId.value = savedRoomId
+      showRoomList.value = false
+      return
+    }
 
     selectedRoomId.value = null
     showRoomList.value = true
@@ -627,14 +656,25 @@ const removeRoom = (id) => {
 const openRoom = (id) => {
   selectedRoomId.value = id
   showRoomList.value = false
+
+  try {
+    localStorage.setItem('audreySelectedRoomId', id)
+  } catch (e) {}
+
   void refreshAccessibleRooms()
 }
 
 const openFirst = () => {
   if (adminRooms.value.length > 0) {
-    // open the most recently added/edited room (last in array)
-    selectedRoomId.value = adminRooms.value[adminRooms.value.length - 1].id
+    const id = adminRooms.value[adminRooms.value.length - 1].id
+
+    selectedRoomId.value = id
     showRoomList.value = false
+
+    try {
+      localStorage.setItem('audreySelectedRoomId', id)
+    } catch (e) {}
+
     void refreshAccessibleRooms()
   }
 }
