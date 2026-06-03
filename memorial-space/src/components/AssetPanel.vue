@@ -366,9 +366,8 @@ const closeModelSubmenu = () => {
 }
 
 const placeModel = (model) => {
-  // emit generic add-asset with model id — SceneCanvas can interpret this
   emit('add-asset', { id: model.id, name: model.name, category: selectedModelCategory.value })
-  handleClosePanel()
+  closeModelSubmenu()
 }
 
 const sampleGalleryPhotos = [
@@ -833,7 +832,7 @@ const placeAudio = () => {
   uploadedAudios.value = []
   audioUrlInput.value = ''
   mediaMode.value = 'chooser'
-  handleClosePanel()
+  //handleClosePanel()
 }
 
 const placePhoto = () => {
@@ -852,7 +851,7 @@ const placePhoto = () => {
   uploadedPhotos.value = []
   selectedGalleryPhotoId.value = 'sunset-memory'
   mediaMode.value = 'chooser'
-  handleClosePanel()
+  //handleClosePanel()
 }
 
 const placeMessage = () => {
@@ -863,7 +862,7 @@ const placeMessage = () => {
   })
 
   messageText.value = ''
-  handleClosePanel()
+  //handleClosePanel()
 }
 
 const selectCandleSize = (size) => {
@@ -893,7 +892,7 @@ const placeCandle = () => {
   candleName.value = ''
   candleMessage.value = ''
   familyMode.value = 'chooser'
-  handleClosePanel()
+  //handleClosePanel()
 }
 </script>
 
