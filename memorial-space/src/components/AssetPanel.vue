@@ -1,5 +1,6 @@
 <script setup>
 import { computed, defineEmits, defineProps, ref, watch } from 'vue'
+import { modelAssets } from '../data/assets'
 
 const props = defineProps({
   showFloor: {
@@ -303,41 +304,16 @@ const selectedModelItems = computed(() => {
 })
 
 // simple scaffold of models per category (placeholders)
-const modelBank = {
-  licht: [
-    { id: 'lamp_floor_01', name: 'Staande lamp', detail: 'Hoge vloerlamp voor zachte sfeer in de hoek.', icon: '🛋️' },
-    { id: 'lamp_table_01', name: 'Tafellamp', detail: 'Kleine lamp voor een kast of bijzettafel.', icon: '💡' },
-    { id: 'lamp_hanging_01', name: 'Hanglamp', detail: 'Sfeervolle hanglamp voor boven een tafel.', icon: '🏮' },
-  ],
-  meubels: [
-    { id: 'chair_01', name: 'Stoel', detail: 'Lichte houten stoel voor in een kamerhoek.', icon: '💺' },
-    { id: 'table_01', name: 'Bijzettafel', detail: 'Klein tafeltje voor een plant of kaars.', icon: '🪑' },
-    { id: 'sofa_01', name: 'Bank', detail: 'Compacte bank als extra meubelstuk.', icon: '🛋️' },
-    { id: 'bookshelf_01', name: 'Boekenkast', detail: 'Hoge kast voor boeken en rustige decoratie.', icon: '📚' },
-    { id: 'desk_01', name: 'Bureau', detail: 'Werkplek met ruimte voor een scherm en lamp.', icon: '🧑‍💻' },
-    { id: 'desk_chair_01', name: 'Bureaustoel', detail: 'Comfortabele stoel voor achter het bureau.', icon: '💺' },
-    { id: 'carpet_01', name: 'Tapijt', detail: 'Zacht vloerkleed dat de zithoek afbakent.', icon: '🟪' },
-    { id: 'side_chair_01', name: 'Bijzetstoel', detail: 'Kleine stoel voor naast de bank of tafel.', icon: '🪑' },
-  ],
-  planten: [
-    { id: 'plant_01', name: 'Monstera', detail: 'Grote bladplant met rustige uitstraling.', icon: '🪴' },
-    { id: 'plant_02', name: 'Vetplant', detail: 'Klein en onderhoudsvriendelijk object.', icon: '🌵' },
-  ],
-  apparaten: [
-    { id: 'speaker_01', name: 'Luidspreker', detail: 'Decoratief audio-object voor de ruimte.', icon: '🔊' },
-    { id: 'tv_01', name: 'Televisie', detail: 'Modern scherm voor een rustige leefruimte.', icon: '📺' },
-    { id: 'laptop_01', name: 'Laptop', detail: 'Compact werk- of studieapparaat.', icon: '💻' },
-  ],
-  hobby: [
-    { id: 'guitar_01', name: 'Gitaar', detail: 'Persoonlijk object voor een hobbyhoek.', icon: '🎸' },
-    { id: 'easel_01', name: 'Schildersezel', detail: 'Rustig creatief object voor teken- of schilderhoek.', icon: '🖼️' },
-    { id: 'ball_01', name: 'Voetbal', detail: 'Eenvoudig sportobject voor een actieve hobbyhoek.', icon: '⚽' },
-  ],
-  voertuigen: [
-    { id: 'bike_01', name: 'Fiets', detail: 'Vervoersmiddel met een speels en herkenbaar silhouet.', icon: '🚲' },
-    { id: 'car_01', name: 'Auto', detail: 'Klein voertuig voor een speels accent.', icon: '🚗' },
-  ],
-}
+const modelBank = modelAssets.reduce((groups, asset) => {
+  if (!groups[asset.category]) groups[asset.category] = []
+  groups[asset.category].push({
+    id: asset.id,
+    name: asset.name,
+    detail: asset.detail,
+    icon: asset.icon,
+  })
+  return groups
+}, {})
 
 const showModelSubmenu = ref(false)
 
