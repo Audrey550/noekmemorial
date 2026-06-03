@@ -846,7 +846,7 @@ const availableAssets = [
   { id: 'candle', name: 'Kaars', icon: '🕯️', file: '/models/candle.glb' },
   { id: 'photo-frame', name: 'Fotolijst', icon: '🖼️', file: '/models/photo-frame.glb' },
   { id: 'flower', name: 'Bloem', icon: '🌹', file: '/models/flower.glb' },
-  { id: 'chair_01', name: 'Stoel', icon: '💺', file: '/models/test_chair.glb' },
+  { id: 'chair_01', name: 'Stoel', icon: '💺', file: '/models/meubels/chairs/test_chair.glb' },
   { id: 'table_01', name: 'Bijzettafel', icon: '🛋️', file: '/models/table_01.glb' },
   { id: 'bookshelf_01', name: 'Boekenkast', icon: '📚', file: '/models/bookshelf_01.glb' },
   { id: 'desk_01', name: 'Bureau', icon: '🧑‍💻', file: '/models/desk_01.glb' },
@@ -867,14 +867,18 @@ const serializeSceneState = () => {
       return {
         id: record.id,
         assetId: record.assetId,
+        modelUrl: record.modelUrl || null,
+
         position: record.position ? { x: record.position.x, y: record.position.y, z: record.position.z } : { x: 0, y: 0, z: 0 },
         rotation: record.rotation ? { x: record.rotation.x, y: record.rotation.y, z: record.rotation.z } : { x: 0, y: 0, z: 0 },
         scale: record.scale ? { x: record.scale.x, y: record.scale.y, z: record.scale.z } : { x: 1, y: 1, z: 1 },
+
         photoData: record.photoData || null,
         audioData: record.audioData || null,
         videoData: record.videoData || null,
         messageData: record.messageData || null,
         candleData: record.candleData || null,
+
         color,
         hidden: !!record.hidden,
       }
@@ -1594,9 +1598,10 @@ const deserializeSceneState = async (jsonString) => {
         // back to the procedural placeholder only if loading fails or the
         // asset file is missing.
         const asset = availableAssets.find(a => a.id === objData.assetId)
+        const modelUrl = objData.modelUrl || asset?.file
         try {
-            if (asset && asset.file) {
-              const gltf = await tryLoadGLB(asset.file)
+            if (modelUrl) {
+              const gltf = await tryLoadGLB(modelUrl)
               if (gltf && gltf.scene) {
                 model = gltf.scene.clone()
               } else {
@@ -1624,7 +1629,10 @@ const deserializeSceneState = async (jsonString) => {
         }
 
         room.add(model)
-        createSceneObjectRecord(model, objData.assetId, { color: objData.color || extractObjectColor(model) })
+        createSceneObjectRecord(model, objData.assetId, {
+        color: objData.color || extractObjectColor(model),
+        modelUrl: objData.modelUrl || null,
+      })
         sceneObjects.value[sceneObjects.value.length - 1].id = objData.id
         model.userData.sceneObjectId = objData.id
         if (objData.hidden) {
@@ -1940,6 +1948,9 @@ const createSceneObjectRecord = (object, assetId, payload = {}, options = {}) =>
     rotation: object.rotation.clone(),
     scale: object.scale.clone(),
     color: payload.color || extractObjectColor(object),
+    
+    modelUrl: payload.modelUrl || null,
+
     ...payload,
   }
 
@@ -2097,7 +2108,9 @@ const addObjectToScene = async (assetId) => {
 
   room.add(model)
 
-  createSceneObjectRecord(model, assetId)
+  createSceneObjectRecord(model, assetId, {
+  modelUrl: asset?.file || null,
+})
   logModeratorPlacement('object', asset?.name || assetId || 'Object toegevoegd', '')
 }
 
