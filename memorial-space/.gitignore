@@ -5,3 +5,5 @@ dist/
 .vite/
 .idea/
 .vscode/
+.env
+.env.production
