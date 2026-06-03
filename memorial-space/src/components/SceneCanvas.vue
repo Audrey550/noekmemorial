@@ -269,6 +269,10 @@ watch(() => props.currentUser, (nu) => {
 watch(() => props.roomId, () => {
   loadRoomMeta()
   loadRoomMembers()
+
+  if (room) {
+    void loadCurrentRoomScene()
+  }
 })
 
 // clear inline feedback when name changes
@@ -1634,6 +1638,31 @@ const deserializeSceneState = async (jsonString) => {
   } catch (error) {
     console.error('Failed to deserialize scene state:', error)
     return false
+  }
+}
+
+const loadCurrentRoomScene = async () => {
+  const supabase = getSupabase()
+
+  if (supabase && props.roomId) {
+    const { data, error } = await supabase
+      .from('room_scenes')
+      .select('scene_json')
+      .eq('room_id', props.roomId)
+      .maybeSingle()
+
+    console.log('ROOM SCENE LOAD DATA:', data)
+    console.log('ROOM SCENE LOAD ERROR:', error)
+
+    if (data?.scene_json) {
+      await deserializeSceneState(JSON.stringify(data.scene_json))
+      return
+    }
+  }
+
+  const stored = localStorage.getItem(getRoomSceneStorageKey())
+  if (stored) {
+    await deserializeSceneState(stored)
   }
 }
 
@@ -4007,25 +4036,7 @@ onMounted(() => {
     } catch (e) {}
   }
 
-  // Load a per-room saved scene if present (created by room creation flow).
-  ;(async () => {
-    try {
-      const id = props.roomId || 'default'
-      const perRoomKey = `audreyRoomScene_${id}`
-      const stored = localStorage.getItem(perRoomKey)
-      if (stored) {
-        if (stored.trim()) {
-          const success = await deserializeSceneState(stored)
-          if (!success) console.warn('Failed to deserialize per-room scene for', id)
-        } else {
-          // empty storage — ensure nothing dynamic remains
-          clearRoomContent()
-        }
-      }
-    } catch (e) {
-      // ignore per-room load errors
-    }
-  })()
+  void loadCurrentRoomScene()
 
   const keyLight = new THREE.DirectionalLight('#fff5fb', 1.6)
   keyLight.position.set(8, 14, 9)
