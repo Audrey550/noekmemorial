@@ -11,6 +11,7 @@ import TutorialOverlay from './TutorialOverlay.vue'
 import createAdminTutorialSteps from '../tutorials/admin-tutorials.js'
 import { logEvent } from '../lib/analytics'
 import { getSupabase } from '../lib/supabase'
+import { modelAssets } from '../data/assets'
 
 const props = defineProps({
   currentUser: Object,
@@ -717,7 +718,7 @@ const normalizeRoomThemeState = (value) => {
 }
 
 const objectColorPalette = ['#3c3c3c', '#8d8d8d', '#f2f2f2', '#c8a4b8', '#a8d7ef', '#a8d7b4', '#d7b98f', '#f0d89a']
-const colorableAssetIds = new Set([
+const colorableAssetIds = computed(() => new Set([
   'candle',
   'photo-frame',
   'flower',
@@ -728,25 +729,12 @@ const colorableAssetIds = new Set([
   'laptop_01',
   'easel_01',
   'ball_01',
-  'chair_01',
-  'table_01',
-  'sofa_01',
-  'plant_01',
-  'plant_02',
-  'speaker_01',
-  'lamp_01',
-  'guitar_01',
-  'bike_01',
-  'car_01',
-  'bookshelf_01',
-  'desk_01',
-  'desk_chair_01',
-  'office_chair_01',
-  'carpet_01',
-  'side_chair_01',
-])
+  ...modelAssets.map(asset => asset.id),
+]))
 
-const canEditSelectedObjectColor = computed(() => colorableAssetIds.has(selectedSceneObjectType.value))
+const canEditSelectedObjectColor = computed(() =>
+  colorableAssetIds.value.has(selectedSceneObjectType.value)
+)
 
 const normalizeHexColor = (value) => {
   try {
@@ -842,19 +830,7 @@ const openColorPicker = () => {
 }
 
 // Available models for the asset panel
-const availableAssets = [
-  { id: 'candle', name: 'Kaars', icon: '🕯️', file: '/models/candle.glb' },
-  { id: 'photo-frame', name: 'Fotolijst', icon: '🖼️', file: '/models/photo-frame.glb' },
-  { id: 'flower', name: 'Bloem', icon: '🌹', file: '/models/flower.glb' },
-  { id: 'chair_01', name: 'Stoel', icon: '💺', file: '/models/meubels/chairs/test_chair.glb' },
-  { id: 'table_01', name: 'Bijzettafel', icon: '🛋️', file: '/models/table_01.glb' },
-  { id: 'bookshelf_01', name: 'Boekenkast', icon: '📚', file: '/models/bookshelf_01.glb' },
-  { id: 'desk_01', name: 'Bureau', icon: '🧑‍💻', file: '/models/desk_01.glb' },
-  { id: 'desk_chair_01', name: 'Bureaustoel', icon: '💺', file: '/models/desk_chair_01.glb' },
-  { id: 'sofa_01', name: 'Bank', icon: '🛋️', file: '/models/sofa_01.glb' },
-  { id: 'carpet_01', name: 'Tapijt', icon: '🟪', file: '/models/carpet_01.glb' },
-  { id: 'side_chair_01', name: 'Bijzetstoel', icon: '🪑', file: '/models/side_chair_01.glb' },
-]
+const availableAssets = modelAssets
 
 // Serialize scene state to JSON for localStorage
 const serializeSceneState = () => {
@@ -1590,7 +1566,7 @@ const deserializeSceneState = async (jsonString) => {
           sceneObjects.value[sceneObjects.value.length - 1].hidden = true
           try { candleGroup.visible = false } catch (e) {}
         }
-      } else if (objData.assetId && colorableAssetIds.has(objData.assetId)) {
+        } else if (objData.assetId && colorableAssetIds.value.has(objData.assetId)) {
         let model = null
 
         // Prefer loading the original GLB asset when available so saved scenes
@@ -2081,6 +2057,18 @@ const addObjectToScene = async (assetId) => {
         const gltf = await tryLoadGLB(asset.file)
         if (gltf && gltf.scene) {
           model = gltf.scene.clone()
+
+          const box = new THREE.Box3().setFromObject(model)
+          const size = new THREE.Vector3()
+          box.getSize(size)
+
+          const maxDimension = Math.max(size.x, size.y, size.z)
+
+          if (maxDimension > 0) {
+            const targetSize = 1.4
+            const scaleFactor = targetSize / maxDimension
+            model.scale.multiplyScalar(scaleFactor)
+          }
         } else {
           throw new Error('No valid GLB')
         }
@@ -2094,7 +2082,6 @@ const addObjectToScene = async (assetId) => {
 
   // Default placement in center of room
   model.position.set(Math.random() * 2 - 1, 0.5, Math.random() * 2 - 1)
-  model.scale.set(1, 1, 1)
 
   // Enable shadows
   if (model.traverse) {
