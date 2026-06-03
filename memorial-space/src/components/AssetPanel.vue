@@ -883,9 +883,17 @@ const placeCandle = () => {
       }"
     >
     <div class="panel-header">
-      <div class="panel-heading">
+      <div class="panel-header">
         <h2>{{ panelHeading }}</h2>
-          <p v-if="props.panelType !== 'media'">{{ panelCopy }}</p>
+
+        <button
+          type="button"
+          class="asset-panel-close"
+          aria-label="Sluit paneel"
+          @click="$emit('close-panel')"
+        >
+          ×
+        </button>
       </div>
     </div>
 
@@ -2685,6 +2693,26 @@ input[type="file"][accept*="audio"] {
 /* Add spacing between stacked photo-card-shell sections */
 .photo-card-shell + .photo-card-shell {
   margin-top: 12px;
+}
+
+#quick-asset-panel {
+  position: relative;
+}
+
+.quick-panel-close {
+  position: absolute;
+  top: 16px;
+  right: 16px;
+  z-index: 99999;
+  width: 34px;
+  height: 34px;
+  border: none;
+  border-radius: 999px;
+  background: #c73c3c;
+  color: #2f2830;
+  font-size: 22px;
+  font-weight: 700;
+  cursor: pointer;
 }
 
 @media (max-width: 960px) {
