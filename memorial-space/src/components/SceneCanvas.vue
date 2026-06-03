@@ -881,11 +881,85 @@ const serializeSceneState = () => {
 
 const getRoomSceneStorageKey = () => `audreyRoomScene_${props.roomId || 'default'}`
 
-const persistCurrentRoomScene = (serializedState = null) => {
+const persistCurrentRoomScene = async (serializedState = null) => {
   try {
     const payload = serializedState || serializeSceneState()
+
     localStorage.setItem(getRoomSceneStorageKey(), payload)
-  } catch (e) {}
+
+    const supabase = getSupabase()
+
+    console.log('PERSIST DEBUG:', {
+      roomId: props.roomId,
+      hasSupabase: !!supabase,
+    })
+
+    if (supabase && props.roomId) {
+      const parsedScene =
+        typeof payload === 'string'
+          ? JSON.parse(payload)
+          : payload
+
+      const { data: userData } = await supabase.auth.getUser()
+      const userId = userData?.user?.id || null
+
+      const { data, error } = await supabase
+        .from('room_scenes')
+        .upsert(
+          {
+            room_id: props.roomId,
+            scene_json: parsedScene,
+            updated_by: userId,
+            updated_at: new Date().toISOString(),
+          },
+          {
+            onConflict: 'room_id',
+          }
+        )
+        .select()
+
+      console.log('ROOM SCENE UPSERT DATA:', data)
+      console.log('ROOM SCENE UPSERT ERROR:', error)
+    }
+  } catch (e) {
+    console.error('ROOM SCENE SAVE ERROR:', e)
+  }
+}
+
+const saveSceneVersionToSupabase = async (serializedState, label = null) => {
+  const supabase = getSupabase()
+
+  console.log('VERSION DEBUG:', {
+    roomId: props.roomId,
+    hasSupabase: !!supabase,
+  })
+
+  if (!supabase || !props.roomId) return
+
+  try {
+    const parsedScene =
+      typeof serializedState === 'string'
+        ? JSON.parse(serializedState)
+        : serializedState
+
+    const { data: userData } = await supabase.auth.getUser()
+    const userId = userData?.user?.id || null
+
+    const { data, error } = await supabase
+      .from('room_scene_versions')
+      .insert({
+        room_id: props.roomId,
+        scene_json: parsedScene,
+        created_by: userId,
+        label: label || `Versie ${new Date().toLocaleString('nl-NL')}`,
+      })
+      .select()
+
+    console.log('ROOM SCENE VERSION DATA:', data)
+    console.log('ROOM SCENE VERSION ERROR:', error)
+  } catch (e) {
+    console.error('ROOM SCENE VERSION SAVE ERROR:', e)
+  }
 }
 
 const pushUndoSnapshot = () => {
@@ -1581,6 +1655,7 @@ const saveSceneToStorage = () => {
     // Also keep the legacy single-key for compatibility
     localStorage.setItem('memorialScene', serialized)
     persistCurrentRoomScene(serialized)
+    void saveSceneVersionToSupabase(serialized)
     try { logEvent('scene.saved', { objectCount: sceneObjects.value.length }) } catch (e) {}
     // refresh in-memory list
     loadSavedScenes()
@@ -2005,7 +2080,7 @@ const handleAddAsset = (asset) => {
   addObjectToScene(id).then(() => {
     persistCurrentRoomScene()
   }).catch((e) => console.error(e))
-  closeQuickPanel()
+
 }
 
 const toggleFloorVisibility = () => {
