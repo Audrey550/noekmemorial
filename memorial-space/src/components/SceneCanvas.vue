@@ -1642,6 +1642,28 @@ const loadCurrentRoomScene = async () => {
       await deserializeSceneState(JSON.stringify(data.scene_json))
       return
     }
+
+    if (props.roomId) {
+      clearRoomContent()
+
+      roomTheme.value = normalizeRoomThemeState({
+        ...roomTheme.value,
+        useTextures: true,
+        useColor: true,
+      })
+
+      applyRoomTheme(roomTheme.value, false)
+
+      const emptyScene = JSON.stringify({
+        version: 1,
+        timestamp: new Date().toISOString(),
+        objects: [],
+      })
+
+      await persistCurrentRoomScene(emptyScene)
+
+      return
+    }
   }
 
   const stored = localStorage.getItem(getRoomSceneStorageKey())
@@ -3286,6 +3308,7 @@ const createPlaceholderModel = (assetId) => {
   } else if (['sofa_01', 'blue_sofa_01'].includes(assetId)) {
     buildSofa()
   } else if (['carpet_01', 'rug_01'].includes(assetId)) {
+    console.log('RUG CARPET PLACEHOLDER CREATED', assetId)
     buildCarpet()
   } else if (['side_chair_01', 'chair_small_01', 'chair_02'].includes(assetId)) {
     buildSideChair()
@@ -3692,7 +3715,7 @@ onMounted(() => {
   rug.rotation.x = -Math.PI / 2
   rug.position.set(0.2, 0.03, 0.9)
   rug.userData.staticRoomElement = true
-  room.add(rug)
+  //room.add(rug)
 
   const createSofaGroup = (width, depth, accentColor) => {
     const sofaGroup = new THREE.Group()
