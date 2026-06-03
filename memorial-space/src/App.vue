@@ -332,7 +332,9 @@ const handleRoomSelected = (roomId) => {
 }
 
 // invite handlers
-const handleLandingNext = () => { inviteStep.value = 2 }
+const handleLandingNext = () => {
+  inviteStep.value = 2
+}
 const handleProfileNext = (payload) => {
   const name = `${payload.firstName} ${payload.lastName}`.trim()
   if (authUser.value) {
@@ -986,8 +988,7 @@ const handleRoomUpdated = ({ id, name }) => {
         <!-- Invite flow for first-time editors (when they open a specific room) -->
         <div v-if="authUser.role === 'editor' && selectedRoomId && !isMemberOnboarded(authUser.email, selectedRoomId)">
           <InviteLanding v-if="inviteStep === 1" :adminName="getRoomMeta(selectedRoomId).adminName || 'Admin'" :roomName="getRoomMeta(selectedRoomId).name || 'Room'" @next="handleLandingNext" />
-          <InviteProfile v-else-if="inviteStep === 2" @next="handleProfileNext" />
-          <InviteAvatar v-else-if="inviteStep === 3" @next="handleAvatarNext" />
+          <InviteAvatar v-else-if="inviteStep === 2" @next="handleAvatarNext" />
           <InviteLoading v-else-if="inviteStep === 4" :roomName="getRoomMeta(selectedRoomId).name || ''" @finished="handleFinished" />
         </div>
 
