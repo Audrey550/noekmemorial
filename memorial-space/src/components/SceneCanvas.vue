@@ -1440,8 +1440,16 @@ const deleteRoom = () => {
   } catch (e) {}
   const supabase = getSupabase()
   if (supabase) {
-    void supabase.from('room_members').delete().eq('room_id', id).catch((e) => console.error(e))
-    void supabase.from('rooms').delete().eq('id', id).catch((e) => console.error(e))
+    void (async () => {
+      try {
+        await supabase.from('room_scene_versions').delete().eq('room_id', id)
+        await supabase.from('room_scenes').delete().eq('room_id', id)
+        await supabase.from('room_members').delete().eq('room_id', id)
+        await supabase.from('rooms').delete().eq('id', id)
+      } catch (e) {
+        console.error('ROOM DELETE ERROR:', e)
+      }
+    })()
   }
   try { logEvent('room.deleted', { roomId: id }) } catch (e) {}
   showRoomSettingsModal.value = false
@@ -4902,6 +4910,26 @@ onBeforeUnmount(() => {
                 <button type="button" class="room-member-remove-button" @click="removeMember(member.id)">Verwijderen</button>
               </div>
             </div>
+          </div>
+
+         <div class="danger-zone">
+            <h3>Kamer verwijderen</h3>
+            <p>Verwijder deze kamer permanent. Dit kan niet ongedaan worden gemaakt.</p>
+
+            <input
+              v-model="deleteConfirmText"
+              type="text"
+              class="delete-confirm-input"
+              placeholder="Typ DELETE om te bevestigen"
+            />
+
+            <button
+              type="button"
+              class="danger-button"
+              @click="deleteRoom"
+            >
+              Kamer verwijderen
+            </button>
           </div>
 
           <div v-if="roomSettingsError" class="room-settings-error">{{ roomSettingsError }}</div>

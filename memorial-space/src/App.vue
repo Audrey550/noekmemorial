@@ -641,15 +641,40 @@ const cancelCreateRoom = () => {
 
 const removeRoom = (id) => {
   if (!authUser.value) return
+
   const email = authUser.value.email
   const key = `audreyRooms_${email}`
+
   adminRooms.value = adminRooms.value.filter(r => r.id !== id)
-  try { localStorage.setItem(key, JSON.stringify(adminRooms.value)) } catch (e) {}
-  const supabase = getSupabase()
-  if (supabase) {
-    void supabase.from('room_members').delete().eq('room_id', id).catch((e) => console.error(e))
-    void supabase.from('rooms').delete().eq('id', id).catch((e) => console.error(e))
+
+  if (selectedRoomId.value === id) {
+    selectedRoomId.value = null
+    showRoomList.value = true
+
+    try {
+      localStorage.removeItem('audreySelectedRoomId')
+    } catch (e) {}
   }
+
+  try {
+    localStorage.setItem(key, JSON.stringify(adminRooms.value))
+  } catch (e) {}
+
+  const supabase = getSupabase()
+
+  if (supabase) {
+    void (async () => {
+      try {
+        await supabase.from('room_scene_versions').delete().eq('room_id', id)
+        await supabase.from('room_scenes').delete().eq('room_id', id)
+        await supabase.from('room_members').delete().eq('room_id', id)
+        await supabase.from('rooms').delete().eq('id', id)
+      } catch (e) {
+        console.error('REMOVE ROOM ERROR:', e)
+      }
+    })()
+  }
+
   void refreshAccessibleRooms()
 }
 
