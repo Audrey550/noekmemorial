@@ -12,6 +12,9 @@ const authUser = ref(null)
 const adminRooms = ref([])
 const accessibleRooms = ref([])
 const selectedRoomId = ref(null)
+const joinInviteCode = ref('')
+const joinInviteError = ref('')
+const joinInviteSuccess = ref('')
 const showRoomList = ref(false)
 const revealed = ref({})
 
@@ -527,8 +530,14 @@ const handleLogin = async (user) => {
     return
   }
 
-  showRoomList.value = false
   await refreshAccessibleRooms(user)
+
+  selectedRoomId.value = null
+  showRoomList.value = true
+
+  try {
+    localStorage.removeItem('audreySelectedRoomId')
+  } catch (e) {}
 }
 
 const logout = () => {
@@ -689,6 +698,90 @@ const openRoom = (id) => {
   void refreshAccessibleRooms()
 }
 
+const joinRoomByInviteCode = async () => {
+  joinInviteError.value = ''
+  joinInviteSuccess.value = ''
+
+  const code = joinInviteCode.value.trim().toUpperCase()
+
+  if (!code) {
+    joinInviteError.value = 'Vul een uitnodigingscode in.'
+    return
+  }
+
+  if (!authUser.value?.email) {
+    joinInviteError.value = 'Je moet ingelogd zijn om een kamer te openen.'
+    return
+  }
+
+  const supabase = getSupabase()
+
+  if (!supabase) {
+    joinInviteError.value = 'Kan geen verbinding maken met Supabase.'
+    return
+  }
+
+  try {
+    const { data: room, error: roomError } = await supabase
+      .from('rooms')
+      .select('id,name,privacy,invite_code')
+      .eq('invite_code', code)
+      .maybeSingle()
+
+    if (roomError) {
+      console.error(roomError)
+      joinInviteError.value = 'Kamer niet gevonden.'
+      return
+    }
+
+    if (!room) {
+      joinInviteError.value = 'Geen kamer gevonden met deze code.'
+      return
+    }
+
+    const userId =
+      authUser.value.supabaseId ||
+      authUser.value.id ||
+      null
+
+    const { error: memberError } = await supabase
+    .from('room_members')
+    .insert({
+      room_id: room.id,
+      user_id: userId,
+      email: authUser.value.email,
+      role: 'viewer',
+      display_name:
+        authUser.value.displayName ||
+        authUser.value.display_name ||
+        authUser.value.email,
+      avatar: authUser.value.avatar || '',
+      onboarded: true,
+      status: 'active'
+    })
+
+    if (memberError && memberError.code !== '23505') {
+      console.error(memberError)
+      joinInviteError.value = 'Toegang geven mislukt.'
+      return
+    }
+
+    joinInviteSuccess.value = `Toegevoegd aan "${room.name}"`
+
+    await refreshAccessibleRooms()
+
+    selectedRoomId.value = room.id
+    showRoomList.value = false
+
+    try {
+      localStorage.setItem('audreySelectedRoomId', room.id)
+    } catch (e) {}
+  } catch (e) {
+    console.error(e)
+    joinInviteError.value = 'Er ging iets mis.'
+  }
+}
+
 const openFirst = () => {
   if (adminRooms.value.length > 0) {
     const id = adminRooms.value[adminRooms.value.length - 1].id
@@ -815,7 +908,7 @@ const handleRoomUpdated = ({ id, name }) => {
     <div v-else>
       <!-- top-right controls (avatar menu moved into SceneCanvas) -->
 
-      <div v-if="authUser.role === 'admin' && showRoomList">
+      <div v-if="showRoomList">
             <div class="panel">
               <div style="display:flex;justify-content:flex-end;margin-bottom:8px">
                 <button class="btn" @click="logout">Uitloggen</button>
@@ -827,7 +920,7 @@ const handleRoomUpdated = ({ id, name }) => {
               <div class="card-instruction">Open een kamer om te bewerken, verwijder deze of maak een nieuwe om opnieuw te beginnen.</div>
 
               <div class="room-grid">
-                <div v-for="r in adminRooms" :key="r.id" class="room-card">
+                <div v-for="r in (authUser.role === 'admin' ? adminRooms : accessibleRooms)" :key="r.id" class="room-card">
                   <div class="room-name">{{ r.name }}</div>
               <div class="room-main">
                 <div class="room-preview" aria-hidden>
@@ -862,11 +955,30 @@ const handleRoomUpdated = ({ id, name }) => {
             </div>
           </div>
 
-          <div style="margin-top:12px;display:flex;gap:8px">
-            <button class="btn" @click="createRoom">Nieuwe kamer</button>
-            <button class="btn" @click="openFirst">Laatst geopend</button>
+          <div v-if="authUser.role === 'admin'" style="margin-top:12px;display:flex;gap:8px">
+          <button class="btn" @click="createRoom">Nieuwe kamer</button>
+          <button class="btn" @click="openFirst">Laatst geopend</button>
+        </div>
+
+          <div class="join-room-card">
+            <h3>Uitnodigingscode</h3>
+            <p>Heb je een uitnodigingscode ontvangen? Vul deze in om toegang te krijgen tot de kamer.</p>
+
+            <div class="join-room-form">
+              <input
+                v-model="joinInviteCode"
+                type="text"
+                placeholder="Bijv. INV-IPENZ1"
+              />
+
+              <button class="btn" type="button" @click="joinRoomByInviteCode">
+                Toegang krijgen
+              </button>
+            </div>
+
+            <p v-if="joinInviteError" class="join-room-error">{{ joinInviteError }}</p>
+            <p v-if="joinInviteSuccess" class="join-room-success">{{ joinInviteSuccess }}</p>
           </div>
-          
         </div>
       </div>
 

@@ -45,6 +45,10 @@ const props = defineProps({
     type: Boolean,
     default: false,
   },
+  isViewer: {
+    type: Boolean,
+    default: false,
+  }
 })
 
 const emit = defineEmits(['add-asset', 'toggle-floor', 'close-panel', 'apply-room-theme', 'apply-sound', 'place-photo', 'place-message', 'place-candle', 'place-audio', 'place-video', 'update-media-mode'])

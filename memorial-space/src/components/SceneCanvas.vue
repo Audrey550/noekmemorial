@@ -4562,6 +4562,7 @@ onBeforeUnmount(() => {
           :initial-media-mode="quickPanelMediaMode"
           :current-sound-settings="soundSettings"
           :is-admin="effectiveRole === 'admin'"
+          :is-viewer="effectiveRole === 'viewer'"
           @add-asset="handleAddAsset"
           @apply-room-theme="handleApplyRoomTheme"
           @apply-sound="handleApplySound"
