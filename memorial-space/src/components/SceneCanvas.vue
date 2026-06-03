@@ -846,7 +846,7 @@ const availableAssets = [
   { id: 'candle', name: 'Kaars', icon: '🕯️', file: '/models/candle.glb' },
   { id: 'photo-frame', name: 'Fotolijst', icon: '🖼️', file: '/models/photo-frame.glb' },
   { id: 'flower', name: 'Bloem', icon: '🌹', file: '/models/flower.glb' },
-  { id: 'chair_01', name: 'Stoel', icon: '💺', file: '/models/chair_01.glb' },
+  { id: 'chair_01', name: 'Stoel', icon: '💺', file: '/models/test_chair.glb' },
   { id: 'table_01', name: 'Bijzettafel', icon: '🛋️', file: '/models/table_01.glb' },
   { id: 'bookshelf_01', name: 'Boekenkast', icon: '📚', file: '/models/bookshelf_01.glb' },
   { id: 'desk_01', name: 'Bureau', icon: '🧑‍💻', file: '/models/desk_01.glb' },
